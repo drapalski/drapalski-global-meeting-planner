@@ -285,25 +285,47 @@ st.markdown(
                 gap:0.35rem !important;
             }
 
-            /* Desktop shared headers disappear on mobile; each stacked input gets
-               its own compact label immediately above the control instead. */
+            /* Desktop shared headers disappear on mobile. Each stacked input gets
+               its own compact label with enough physical space before the widget. */
             .participant-header {
                 display:none !important;
             }
 
             .mobile-field-label {
                 display:block !important;
+                position:relative !important;
+                z-index:2 !important;
                 font-size:0.66rem !important;
-                line-height:1.15 !important;
+                line-height:1.20 !important;
                 font-weight:650 !important;
                 color:#6f7177 !important;
-                margin:0.22rem 0 0.18rem 0.18rem !important;
-                padding:0 !important;
+                margin:0.38rem 0 0.12rem 0.18rem !important;
+                padding:0 0 0.08rem 0 !important;
+                min-height:0.90rem !important;
+                clear:both !important;
+            }
+
+            /* Streamlit wraps st.markdown in its own block. Give that wrapper
+               bottom space so select/time inputs cannot visually overlap labels. */
+            div[data-testid="stMarkdownContainer"]:has(.mobile-field-label),
+            div[data-testid="stMarkdown"]:has(.mobile-field-label) {
+                margin-bottom:0.42rem !important;
+                padding-bottom:0.08rem !important;
+                overflow:visible !important;
+            }
+
+            /* A little separation between stacked controls makes the mobile form
+               easier to scan without changing the desktop layout. */
+            div[data-testid="stTextInput"],
+            div[data-testid="stSelectbox"],
+            div[data-testid="stTimeInput"] {
+                margin-top:0 !important;
+                margin-bottom:0.30rem !important;
             }
 
             .participant-intro-box {
                 padding:0.62rem 0.72rem !important;
-                margin-bottom:0.50rem !important;
+                margin-bottom:0.58rem !important;
             }
 
             .participant-intro-title {
@@ -312,6 +334,62 @@ st.markdown(
 
             .participant-intro-copy {
                 font-size:0.70rem !important;
+            }
+
+            /* Mobile participant cards: almost transparent, lightly separated. */
+            div[data-testid="stVerticalBlockBorderWrapper"]:has(div[class*="st-key-remove_"]) {
+                position:relative !important;
+                background:rgba(255, 102, 196, 0.025) !important;
+                border-color:#eadfe7 !important;
+                margin-bottom:0.62rem !important;
+            }
+
+            div[data-testid="stVerticalBlockBorderWrapper"]:has(div[class*="st-key-remove_"]) > div {
+                padding-top:0.58rem !important;
+                padding-bottom:0.58rem !important;
+                padding-left:0.62rem !important;
+                padding-right:0.62rem !important;
+            }
+
+            /* Keep metadata clear of the corner remove control. */
+            .participant-meta {
+                padding-right:2.15rem !important;
+                padding-bottom:0.24rem !important;
+            }
+
+            /* Move the participant X out of the stacked-column flow and pin it
+               to the card's upper-right corner on mobile only. */
+            div[class*="st-key-remove_"] {
+                position:absolute !important;
+                top:0.62rem !important;
+                right:0.62rem !important;
+                z-index:20 !important;
+                width:18px !important;
+                height:18px !important;
+                margin:0 !important;
+                padding:0 !important;
+                display:block !important;
+            }
+
+            div[class*="st-key-remove_"] button {
+                width:18px !important;
+                min-width:18px !important;
+                max-width:18px !important;
+                height:18px !important;
+                min-height:18px !important;
+                padding:0 !important;
+                border-radius:4px !important;
+                font-size:8px !important;
+                line-height:1 !important;
+                background:#ff66c4 !important;
+                border-color:#ff66c4 !important;
+                color:#111111 !important;
+            }
+
+            div[class*="st-key-remove_"] button:hover {
+                background:#9a9da2 !important;
+                border-color:#9a9da2 !important;
+                color:#ffffff !important;
             }
         }
 
