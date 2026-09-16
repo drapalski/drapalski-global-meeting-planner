@@ -1113,8 +1113,8 @@ PARTICIPANT_COLORS = [
 
 STATUS_COLORS = {
     "Available": "#A8C9AE",
-    "Outside availability": "#8F3548",
-    "Sleep hours": "#E8B47A",
+    "Outside availability": "#F3D6E7",
+    "Sleep hours": "#4A4A4A",
 }
 
 LOCATION_COORDS = {
@@ -1494,7 +1494,20 @@ with st.sidebar:
         unsafe_allow_html=True,
     )
 
-    st.markdown("### Saved meeting setups")
+    st.markdown(
+        """
+        <div style="
+            height:3px;
+            width:100%;
+            background:#ff66c4;
+            border-radius:3px;
+            margin:0.65rem 0 0.70rem 0;
+        "></div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    st.markdown("### Upload & download / save")
     st.caption("Reuse the same people, time zones, and working hours later.")
     preset_file = st.file_uploader(
         "Import saved setup",
@@ -1504,7 +1517,7 @@ with st.sidebar:
     )
 
     if st.button(
-        "Open saved setup",
+        "Upload / open setup",
         use_container_width=True,
         key="load_preset_button",
     ):
@@ -1608,7 +1621,7 @@ with st.sidebar:
 
 
 st.subheader("Who’s joining?")
-st.write(
+st.caption(
     "Add the people or teams joining the meeting and choose their country or area. "
     "For U.S. participants, choose the state too. Availability defaults to 08:00–17:00 local time "
     "and directly drives the meeting ranking and green availability shown below."
@@ -1766,7 +1779,7 @@ preset_json = json.dumps(preset_payload, indent=2, ensure_ascii=False)
 
 with preset_download_slot:
     st.download_button(
-        "Save this setup",
+        "Download / save setup",
         data=preset_json,
         file_name=f"meeting_setup_{meeting_date.isoformat()}.json",
         mime="application/json",
@@ -1955,11 +1968,11 @@ st.markdown(
         ({reference_offset})
         · {map_reference_utc.strftime('%H:%M')} UTC
         <br>
-        <span style="color:#4f9b63;font-weight:700;">● Green</span> inside selected availability
+        <span style="color:#A8C9AE;font-weight:700;">●</span> inside selected availability
         &nbsp;&nbsp;
-        <span style="color:#8F3548;font-weight:700;">● Pink</span> awake but outside availability
+        <span style="color:#F3D6E7;font-weight:700;">●</span> awake but outside availability
         &nbsp;&nbsp;
-        <span style="color:#E59A45;font-weight:700;">● Orange</span> 00:00–06:00 local sleep hours
+        <span style="color:#4A4A4A;font-weight:700;">●</span> 00:00–06:00 local sleep hours
     </div>
     """,
     unsafe_allow_html=True,
@@ -2051,7 +2064,7 @@ st.plotly_chart(
 
 st.caption(
     "The dashed line marks the proposed meeting instant on the UTC timeline. "
-    "Each participant’s selected availability drives the green segments and the meeting-ranking calculation."
+    "Each participant’s selected availability drives the available segments and the meeting-ranking calculation."
 )
 
 
