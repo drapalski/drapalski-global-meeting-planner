@@ -1839,18 +1839,7 @@ if (
 ):
     st.session_state.map_reference_tz = browser_timezone
 
-control_col, reference_col = st.columns([1.15, 1.85])
-
-with control_col:
-    map_hour = st.slider(
-        "Reference time",
-        min_value=0,
-        max_value=23,
-        value=12,
-        step=1,
-        format="%d:00",
-        help="Choose a clock time in the reference time zone shown to the right. The app converts that instant to every participant’s local time.",
-    )
+reference_col, control_col = st.columns([1.85, 1.15])
 
 with reference_col:
     reference_tz = st.selectbox(
@@ -1867,6 +1856,18 @@ with reference_col:
         ),
     )
 
+with control_col:
+    map_hour = st.slider(
+        "Proposed meeting time",
+        min_value=0,
+        max_value=23,
+        value=12,
+        step=1,
+        format="%d:00",
+        help="Choose the proposed meeting time in the reference time zone shown on the left. "
+             "The app converts that instant to every participant’s local time.",
+    )
+
 reference_local = datetime.combine(
     meeting_date,
     time(map_hour, 0),
@@ -1874,21 +1875,6 @@ reference_local = datetime.combine(
 )
 map_reference_utc = reference_local.astimezone(ZoneInfo("UTC"))
 
-st.markdown(
-    f"""
-    <div style="font-size:0.78rem;line-height:1.45;color:#62656b;margin-top:-0.20rem;margin-bottom:0.15rem;">
-        <strong>Time shown:</strong>
-        {reference_local.strftime('%H:%M')} in {friendly_zone_name(reference_tz)}
-        {" · your browser time zone" if reference_tz == browser_timezone else " · selected reference zone"}
-        · {map_reference_utc.strftime('%H:%M')} UTC
-        &nbsp;&nbsp;&nbsp;
-        <span style="color:#4f9b63;font-weight:700;">● Green</span> inside that person's selected availability &nbsp;&nbsp;
-        <span style="color:#cd549e;font-weight:700;">● Pink</span> awake but outside availability &nbsp;&nbsp;
-        <span style="color:#e59a45;font-weight:700;">● Orange</span> 00–06 local
-    </div>
-    """,
-    unsafe_allow_html=True,
-)
 
 world_fig = go.Figure()
 
@@ -2054,12 +2040,26 @@ st.plotly_chart(
     config={"displayModeBar": False, "responsive": True},
 )
 
-st.caption(
-    "The reference time above is converted through UTC to each participant’s local time. "
-    "Green uses each participant’s own Available from / Available until settings and is what the "
-    "meeting-ranking calculation prefers. Outside that selected availability, orange marks 00:00–06:00 "
-    "local sleep hours and pink marks other awake hours. The default availability for new participants "
-    "is 08:00–17:00 local. Map bands are scheduling guides, not legal timezone borders."
+st.markdown(
+    f"""
+    <div style="font-size:0.78rem;line-height:1.55;color:#62656b;margin-top:-0.15rem;margin-bottom:0.30rem;">
+        <strong>Proposed meeting:</strong>
+        {reference_local.strftime('%H:%M')} in {friendly_zone_name(reference_tz)}
+        {" · browser time zone" if reference_tz == browser_timezone else " · selected reference zone"}
+        · {map_reference_utc.strftime('%H:%M')} UTC
+        <br>
+        <span style="color:#4f9b63;font-weight:700;">● Green</span> inside that participant’s selected availability
+        &nbsp;&nbsp;
+        <span style="color:#cd549e;font-weight:700;">● Pink</span> awake but outside availability
+        &nbsp;&nbsp;
+        <span style="color:#e59a45;font-weight:700;">● Orange</span> 00:00–06:00 local sleep hours
+        <br>
+        Each participant’s <strong>Available from / Available until</strong> window drives the green status
+        and is preferred by the meeting-ranking calculation. New participants default to 08:00–17:00 local time.
+        Map bands are scheduling guides, not legal timezone borders.
+    </div>
+    """,
+    unsafe_allow_html=True,
 )
 
 
