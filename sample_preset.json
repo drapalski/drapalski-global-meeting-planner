@@ -1,0 +1,36 @@
+{
+  "app": "Drapalski Global Meeting Planner",
+  "preset_version": 1,
+  "meeting_date": "2026-09-18",
+  "meeting_duration_minutes": 60,
+  "start_time_interval_minutes": 30,
+  "participants": [
+    {
+      "name": "Germany team",
+      "location": "Germany",
+      "country_code": "DE",
+      "state": "",
+      "time_zone": "Europe/Berlin",
+      "earliest": "08:00",
+      "latest": "18:00"
+    },
+    {
+      "name": "U.S. team",
+      "location": "United States",
+      "country_code": "US",
+      "state": "Oregon",
+      "time_zone": "America/Los_Angeles",
+      "earliest": "09:00",
+      "latest": "17:00"
+    },
+    {
+      "name": "Taipei team",
+      "location": "Taiwan",
+      "country_code": "TW",
+      "state": "",
+      "time_zone": "Asia/Taipei",
+      "earliest": "08:00",
+      "latest": "18:00"
+    }
+  ]
+}
