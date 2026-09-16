@@ -6,6 +6,7 @@ import plotly.graph_objects as go
 import uuid
 import json
 import importlib.resources as resources
+import html
 import math
 
 from pathlib import Path
@@ -254,6 +255,96 @@ st.markdown(
             .best-times-methodology-grid {
                 grid-template-columns: 1fr !important;
                 gap:0.35rem !important;
+            }
+        }
+
+        .ranked-proposal-card {
+            display:grid;
+            grid-template-columns:minmax(0, 1fr) 150px;
+            gap:0.70rem;
+            border:1px solid #eadde6;
+            border-radius:10px;
+            padding:0.72rem 0.78rem;
+            margin-bottom:0.55rem;
+            min-height:0;
+        }
+
+        .ranked-proposal-left {
+            display:flex;
+            flex-direction:column;
+            gap:0.34rem;
+            min-width:0;
+        }
+
+        .ranked-proposal-title {
+            font-size:0.98rem;
+            line-height:1.15;
+            font-weight:700;
+            color:#202226;
+            margin:0;
+        }
+
+        .ranked-proposal-people {
+            display:flex;
+            flex-direction:column;
+            gap:0.24rem;
+            margin-top:0.10rem;
+        }
+
+        .ranked-proposal-person {
+            font-size:0.74rem;
+            line-height:1.30;
+            color:#202226;
+        }
+
+        .ranked-proposal-person strong {
+            font-size:0.78rem;
+        }
+
+        .ranked-proposal-meta {
+            color:#74777c;
+            font-size:0.68rem;
+        }
+
+        .ranked-proposal-scorebox {
+            display:flex;
+            flex-direction:column;
+            justify-content:center;
+            align-items:flex-start;
+            width:100%;
+            height:100%;
+            min-height:100%;
+            border-radius:8px;
+            padding:0.60rem 0.68rem;
+            box-sizing:border-box;
+            color:#202226;
+        }
+
+        .ranked-proposal-scorebox-label {
+            font-size:0.70rem;
+            line-height:1.15;
+            margin-bottom:0.18rem;
+        }
+
+        .ranked-proposal-scorebox-value {
+            font-size:1.55rem;
+            line-height:1;
+            font-weight:500;
+        }
+
+        @media (max-width: 700px) {
+            .ranked-proposal-card {
+                grid-template-columns:1fr 96px;
+                gap:0.45rem;
+                padding:0.60rem;
+            }
+
+            .ranked-proposal-title {
+                font-size:0.90rem;
+            }
+
+            .ranked-proposal-scorebox-value {
+                font-size:1.25rem;
             }
         }
 
@@ -2618,30 +2709,81 @@ st.markdown(
 
 top_n = st.slider("How many options to show", 3, 10, 4)
 
-for rank, (_, row) in enumerate(results.head(top_n).iterrows(), start=1):
-    with st.container(border=True):
-        heading, metric = st.columns([4, 1])
+display_results = results.head(top_n).copy()
 
-        with heading:
-            st.markdown(f"#### #{rank} — Score {row['Overall score']:.0f}/100")
+# Build score tiers so equal composite scores receive the same visual emphasis.
+unique_scores = sorted(
+    {round(float(score), 6) for score in display_results["Overall score"]},
+    reverse=True,
+)
 
-        with metric:
-            st.metric("Preferred", f"{int(row['Preferred count'])}/{len(people)}")
+tier_backgrounds = [
+    "#ffd0ec",  # brightest pink: highest score
+    "#fde3f3",  # medium pink
+    "#fff1f8",  # light pink
+]
+tier_scorebox_backgrounds = [
+    "#ff9fd6",
+    "#f7c7e4",
+    "#f8ddea",
+]
 
-        cols = st.columns(len(people))
+for rank, (_, row) in enumerate(display_results.iterrows(), start=1):
+    score_value = round(float(row["Overall score"]), 6)
+    score_tier = unique_scores.index(score_value)
+    palette_index = min(score_tier, len(tier_backgrounds) - 1)
 
-        for col, p in zip(cols, people):
-            local = row[p["id"]]
-            status = row[p["id"] + "_status"]
+    card_bg = tier_backgrounds[palette_index]
+    scorebox_bg = tier_scorebox_backgrounds[palette_index]
 
-            with col:
-                st.markdown(f"**{p['name']}**")
-                st.write(local.strftime("%a %d %b %Y"))
-                st.write(local.strftime("%H:%M"))
-                st.caption(
-                    f"{p['location']} · {local.tzname()} · "
-                    f"{utc_offset_label(p['tz_name'], local.date())} · {status}"
-                )
+    people_html = []
+    for p in people:
+        local = row[p["id"]]
+        status = row[p["id"] + "_status"]
+
+        person_name = html.escape(str(p["name"]))
+        place = html.escape(str(p["location"]))
+        tz_abbrev = html.escape(str(local.tzname() or ""))
+        utc_offset = html.escape(
+            utc_offset_label(p["tz_name"], local.date())
+        )
+        status_text = html.escape(str(status))
+
+        people_html.append(
+            f"""
+            <div class="ranked-proposal-person">
+                <strong>{person_name}</strong>
+                · {local.strftime('%a %d %b %Y')}
+                · {local.strftime('%H:%M')}
+                <span class="ranked-proposal-meta">
+                    · {place} · {tz_abbrev} · {utc_offset} · {status_text}
+                </span>
+            </div>
+            """
+        )
+
+    st.markdown(
+        f"""
+        <div class="ranked-proposal-card" style="background:{card_bg};">
+            <div class="ranked-proposal-left">
+                <div class="ranked-proposal-title">
+                    #{rank} · Score {float(row['Overall score']):.0f}/100
+                </div>
+                <div class="ranked-proposal-people">
+                    {''.join(people_html)}
+                </div>
+            </div>
+
+            <div class="ranked-proposal-scorebox" style="background:{scorebox_bg};">
+                <div class="ranked-proposal-scorebox-label">Preferred</div>
+                <div class="ranked-proposal-scorebox-value">
+                    {int(row['Preferred count'])}/{len(people)}
+                </div>
+            </div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
 
 
 # ---------- Email-ready proposal ----------
