@@ -45,10 +45,22 @@ st.markdown(
         .block-container {
             max-width: none !important;
             width: 100% !important;
-            padding-top: 0.45rem !important;
+            padding-top: 1.15rem !important;
             padding-bottom: 0.65rem !important;
-            padding-left: 0.45rem !important;
-            padding-right: 0.45rem !important;
+            padding-left: 0.65rem !important;
+            padding-right: 0.65rem !important;
+        }
+
+        /* Keep the full-screen Streamlit app from stretching too wide.
+           Embedded/narrower views remain fluid. */
+        @media (min-width: 1450px) {
+            .block-container {
+                max-width: 1500px !important;
+                margin-left: auto !important;
+                margin-right: auto !important;
+                padding-left: 1.10rem !important;
+                padding-right: 1.10rem !important;
+            }
         }
 
         div[data-testid="stVerticalBlock"] {
