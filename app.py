@@ -331,6 +331,16 @@ st.markdown(
             color:#111111 !important;
         }
 
+        /* Compact saved-setup controls in the sidebar. */
+        div[class*="st-key-load_preset_button"] .stButton > button,
+        div[class*="st-key-download_preset_button"] .stDownloadButton > button,
+        section[data-testid="stSidebar"] [data-testid="stFileUploader"] button {
+            font-size:8px !important;
+            line-height:1.05 !important;
+            min-height:1.80rem !important;
+            padding:0.12rem 0.35rem !important;
+        }
+
         a {
             color: var(--dc-pink) !important;
         }
@@ -1526,6 +1536,18 @@ if "start_interval_minutes" not in st.session_state:
 
 # ---------- Meeting settings ----------
 
+# The planner automatically searches forward from the visitor's current date.
+# No meeting date input is required for the normal workflow.
+try:
+    browser_timezone = st.context.timezone
+except Exception:
+    browser_timezone = None
+
+if not browser_timezone or browser_timezone not in ALL_ZONES:
+    browser_timezone = "UTC"
+
+meeting_date = datetime.now(ZoneInfo(browser_timezone)).date()
+
 with st.sidebar:
     st.markdown(
         """
@@ -1533,7 +1555,7 @@ with st.sidebar:
             Meeting setup
         </div>
         <div style="font-size:0.82rem;line-height:1.38;color:#5e646d;margin-bottom:0.45rem;">
-            Set the date, meeting length, and who is joining. Time-zone changes are handled automatically.
+            Choose the meeting length and who is joining. The planner automatically searches the next 7 days and handles time-zone changes.
         </div>
         """,
         unsafe_allow_html=True,
@@ -1561,11 +1583,20 @@ with st.sidebar:
         help="Load a previously downloaded Global Meeting Planner JSON preset.",
     )
 
-    if st.button(
-        "Upload / open setup",
-        use_container_width=True,
-        key="load_preset_button",
-    ):
+    setup_open_col, setup_save_col = st.columns(2)
+
+    with setup_open_col:
+        open_saved_setup = st.button(
+            "Open setup",
+            use_container_width=True,
+            key="load_preset_button",
+        )
+
+    # Populated later after the participant editor has the current values.
+    with setup_save_col:
+        preset_download_slot = st.empty()
+
+    if open_saved_setup:
         if preset_file is None:
             st.warning("Choose a saved setup file first.")
         elif preset_file.size > 100_000:
@@ -1577,24 +1608,16 @@ with st.sidebar:
                     load_preset_payload(payload)
                 )
                 st.session_state.people_v2 = loaded_people
-                st.session_state.meeting_date = loaded_date
+                # The saved date is intentionally ignored in the simplified workflow.
+                # Searches always begin from the visitor's current local date/time.
                 st.session_state.duration_minutes = loaded_duration
                 st.session_state.start_interval_minutes = loaded_interval
                 st.rerun()
             except Exception as exc:
                 st.error(f"Could not open saved setup: {exc}")
 
-    # Populated later after the participant editor has the current values.
-    preset_download_slot = st.empty()
-
     st.divider()
-    st.header("Meeting details")
-
-    meeting_date = st.date_input(
-        "Meeting date",
-        key="meeting_date",
-        help="UTC offsets are calculated for this exact date.",
-    )
+    st.header("Meeting length")
 
     duration = st.selectbox(
         "Meeting length",
@@ -1602,6 +1625,10 @@ with st.sidebar:
         key="duration_minutes",
         format_func=lambda x: {30: "30 minutes", 45: "45 minutes", 60: "1 hour", 90: "1.5 hours"}.get(x, f"{x} minutes"),
         help="Choose how long the meeting should be.",
+    )
+
+    st.caption(
+        "No date selection needed. The planner searches the next 7 days from now and ranks the highest-priority options."
     )
 
     with st.expander("Advanced settings", expanded=False):
@@ -1665,12 +1692,17 @@ with st.sidebar:
 # ---------- Participant editor ----------
 
 
-st.subheader("Who’s joining?")
-st.caption(
-    "Add the people or teams joining the meeting and choose their country or area. "
-    "For U.S. participants, choose the state too. Availability defaults to 08:00–17:00 local time "
-    "and directly drives the meeting ranking and green availability shown below."
-)
+joining_title_col, joining_help_col = st.columns([1.0, 2.6])
+
+with joining_title_col:
+    st.subheader("Who’s joining?")
+
+with joining_help_col:
+    st.caption(
+        "Add the people or teams joining the meeting and choose their country or area. "
+        "For U.S. participants, choose the state too. Availability defaults to 08:00–17:00 local time "
+        "and directly drives the meeting ranking and green availability shown below."
+    )
 
 people = st.session_state.people_v2
 
@@ -1860,12 +1892,13 @@ preset_json = json.dumps(preset_payload, indent=2, ensure_ascii=False)
 
 with preset_download_slot:
     st.download_button(
-        "Download / save setup",
+        "Save setup",
         data=preset_json,
         file_name=f"meeting_setup_{meeting_date.isoformat()}.json",
         mime="application/json",
         use_container_width=True,
-        help="Save the current people, hours, date, and meeting settings so you can reuse them later.",
+        key="download_preset_button",
+        help="Save the current people, hours, and meeting settings so you can reuse them later.",
     )
 
 if not people:
@@ -1912,16 +1945,7 @@ with st.expander("Time-zone details", expanded=False):
 
 st.subheader("World time view")
 
-# Use the visitor's browser/computer time zone as the default reference.
-# Streamlit exposes this directly through st.context.timezone.
-try:
-    browser_timezone = st.context.timezone
-except Exception:
-    browser_timezone = None
-
-if not browser_timezone or browser_timezone not in ALL_ZONES:
-    browser_timezone = "UTC"
-
+# Browser time zone was resolved above for the automatic search date.
 reference_zone_options = []
 for zone_name in [browser_timezone, *FAVORITE_ZONES, *ALL_ZONES]:
     if zone_name in ALL_ZONES and zone_name not in reference_zone_options:
@@ -2240,11 +2264,18 @@ st.caption(
 
 # ---------- Candidate calculation ----------
 
-anchor_utc = datetime.combine(meeting_date, time(0, 0), tzinfo=ZoneInfo("UTC"))
+# Start at the next configured interval from the current moment.
+now_utc = datetime.now(ZoneInfo("UTC")).replace(second=0, microsecond=0)
+minute_remainder = now_utc.minute % interval
+if minute_remainder:
+    now_utc += timedelta(minutes=interval - minute_remainder)
+
+anchor_utc = now_utc
 candidate_rows = []
 
-# Search 48 hours so the planner can surface cross-date compromises.
-steps = int((48 * 60) / interval)
+# Search the next 7 days automatically and rank the best options.
+SEARCH_HORIZON_DAYS = 7
+steps = int((SEARCH_HORIZON_DAYS * 24 * 60) / interval)
 
 for step in range(steps):
     start_utc = anchor_utc + timedelta(minutes=step * interval)
