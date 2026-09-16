@@ -232,10 +232,14 @@ st.markdown(
 
         /* Slightly tighter card interiors, especially in the participant editor. */
         div[data-testid="stVerticalBlockBorderWrapper"] > div {
-            padding-top: 0.38rem !important;
-            padding-bottom: 0.38rem !important;
-            padding-left: 0.48rem !important;
-            padding-right: 0.48rem !important;
+            padding-top: 0.26rem !important;
+            padding-bottom: 0.26rem !important;
+            padding-left: 0.36rem !important;
+            padding-right: 0.36rem !important;
+        }
+
+        div[data-testid="stTimeInput"] {
+            max-width: 7.2rem !important;
         }
 
         .joining-help {
@@ -315,47 +319,61 @@ st.markdown(
             font-weight:600;
         }
 
-        /* Participant remove buttons: compact corner X */
+        /* Participant remove buttons: tiny corner X */
         div[class*="st-key-remove_"] {
             display:flex !important;
             justify-content:flex-end !important;
             align-items:flex-start !important;
         }
 
-        div[class*="st-key-remove_"] .stButton {
-            width:auto !important;
-        }
-
-        div[class*="st-key-remove_"] .stButton > button {
+        div[class*="st-key-remove_"] button {
             background:#ff66c4 !important;
-            border-color:#ff66c4 !important;
+            border:1px solid #ff66c4 !important;
             color:#111111 !important;
             font-size:8px !important;
             font-weight:700 !important;
-            width:20px !important;
-            min-width:20px !important;
-            max-width:20px !important;
-            min-height:20px !important;
-            height:20px !important;
+            width:16px !important;
+            min-width:16px !important;
+            max-width:16px !important;
+            min-height:16px !important;
+            height:16px !important;
             padding:0 !important;
+            margin:0 !important;
             border-radius:4px !important;
             line-height:1 !important;
+            box-shadow:none !important;
         }
 
-        div[class*="st-key-remove_"] .stButton > button:hover {
-            background:#111111 !important;
-            border-color:#111111 !important;
+        div[class*="st-key-remove_"] button:hover {
+            background:#8f949a !important;
+            border-color:#8f949a !important;
             color:#ffffff !important;
         }
 
+        section[data-testid="stSidebar"] [data-testid="stExpander"] {
+            margin-top:0.55rem !important;
+            margin-bottom:0.70rem !important;
+        }
+
         /* Compact saved-setup controls in the sidebar. */
-        div[class*="st-key-load_preset_button"] .stButton > button,
-        div[class*="st-key-download_preset_button"] .stDownloadButton > button,
+        section[data-testid="stSidebar"] div[class*="st-key-load_preset_button"] button,
+        section[data-testid="stSidebar"] div[class*="st-key-download_preset_button"] button,
+        section[data-testid="stSidebar"] div[class*="st-key-preset_upload"] button,
         section[data-testid="stSidebar"] [data-testid="stFileUploader"] button {
             font-size:8px !important;
-            line-height:1.05 !important;
-            min-height:1.80rem !important;
-            padding:0.12rem 0.35rem !important;
+            line-height:1 !important;
+            min-height:1.45rem !important;
+            height:1.45rem !important;
+            width:auto !important;
+            min-width:0 !important;
+            padding:0.08rem 0.30rem !important;
+            border-radius:5px !important;
+        }
+
+        section[data-testid="stSidebar"] div[class*="st-key-load_preset_button"],
+        section[data-testid="stSidebar"] div[class*="st-key-download_preset_button"] {
+            margin-top:0.08rem !important;
+            margin-bottom:0.08rem !important;
         }
 
         a {
@@ -1655,8 +1673,19 @@ def load_preset_payload(payload):
 
 
 def reset_defaults():
-    """Reset meeting settings and participants."""
-    st.session_state.people_v2 = default_people()
+    """
+    Start over while keeping the first participant.
+
+    This removes every party member except the current top entry and resets
+    meeting-level controls. The remaining participant's current country,
+    time zone, and working-hour overrides are preserved.
+    """
+    current_people = st.session_state.get("people_v2", [])
+    if current_people:
+        st.session_state.people_v2 = [current_people[0]]
+    else:
+        st.session_state.people_v2 = [default_people()[0]]
+
     st.session_state.meeting_date = DEFAULT_MEETING_DATE
     st.session_state.duration_minutes = DEFAULT_DURATION_MINUTES
     st.session_state.start_interval_minutes = DEFAULT_START_INTERVAL_MINUTES
@@ -1858,8 +1887,9 @@ with joining_help_col:
         """
         <div class="joining-help">
             Add the people or teams joining the meeting and choose their country or area.
-            For U.S. participants, choose the state too. Availability defaults to 08:00–17:00
-            local time and directly drives the meeting ranking and green availability shown below.
+            For U.S. participants, choose the state too. Working hours default to 08:00–17:00
+            local time. Use the override fields only when a participant is available outside
+            those hours; the selected window directly drives the ranking and green availability.
         </div>
         """,
         unsafe_allow_html=True,
@@ -1869,10 +1899,10 @@ people = st.session_state.people_v2
 
 # One shared header row keeps the participant cards compact and avoids
 # repeating the same field labels for every person.
-h1, h2, h3, h4, h5 = st.columns([1.05, 1.20, 1.85, 0.90, 0.90])
+h1, h2, h3, h4, h5 = st.columns([1.00, 1.15, 1.80, 0.72, 0.72])
 for col, label in zip(
     [h1, h2, h3, h4, h5],
-    ["Name", "Country / area + state", "Time zone", "Available from", "Available until"],
+    ["Name", "Country / area + state", "Time zone", "Override from", "Override until"],
 ):
     with col:
         st.markdown(
@@ -1898,7 +1928,7 @@ for index, person in enumerate(list(people)):
         )
         participant_region = f"UN M49 geography: {un_region_label(country_code)}"
 
-        top_name, top_meta, top_remove = st.columns([1.55, 7.15, 0.30])
+        top_name, top_meta, top_remove = st.columns([1.55, 7.25, 0.18])
 
         with top_name:
             st.markdown(f"**{participant_name}**")
@@ -1924,7 +1954,7 @@ for index, person in enumerate(list(people)):
                 st.session_state.people_v2 = [p for p in people if p["id"] != pid]
                 st.rerun()
 
-        c1, c2, c3, c4, c5 = st.columns([1.05, 1.20, 1.85, 0.90, 0.90])
+        c1, c2, c3, c4, c5 = st.columns([1.00, 1.15, 1.80, 0.72, 0.72])
 
         with c1:
             person["name"] = st.text_input(
@@ -2001,7 +2031,7 @@ for index, person in enumerate(list(people)):
                 value=person["earliest"],
                 step=900,
                 key=f"earliest_{pid}",
-                help="This person's selected availability. It overrides the default 08:00–17:00 business-hours assumption.",
+                help="Override this participant's default 08:00 working-hours start only when needed.",
                 label_visibility="collapsed",
             )
 
@@ -2011,7 +2041,7 @@ for index, person in enumerate(list(people)):
                 value=person["latest"],
                 step=900,
                 key=f"latest_{pid}",
-                help="The planner treats meetings inside this person's selected availability as preferred.",
+                help="Override this participant's default 17:00 working-hours end only when needed.",
                 label_visibility="collapsed",
             )
 
