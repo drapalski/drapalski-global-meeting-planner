@@ -256,8 +256,20 @@ st.markdown(
             font-weight:700;
             text-align:center;
             line-height:1.15;
-            margin-bottom:0.18rem;
+            margin-bottom:0.70rem;
             white-space:nowrap;
+        }
+
+        .participant-meta {
+            color:#74777c;
+            font-size:0.70rem;
+            line-height:1.35;
+            padding-top:0.05rem;
+        }
+
+        .participant-meta strong {
+            color:#55585d;
+            font-weight:600;
         }
 
         a {
@@ -1659,12 +1671,37 @@ for index, person in enumerate(list(people)):
     pid = person["id"]
 
     with st.container(border=True):
-        top_left, top_right = st.columns([9, 1])
+        country_code = person.get("country_code", "")
+        base_country_label = country_display_name(country_code)
+        location_label = base_country_label
+        if country_code == "US" and person.get("state"):
+            location_label = f"{person['state']}, {base_country_label}"
 
-        with top_left:
-            st.markdown(f"**{person['name'] or f'Person {index + 1}'}**")
+        participant_name = person["name"] or f"Person {index + 1}"
+        participant_meta = (
+            f"{location_label} · "
+            f"{friendly_zone_name(person['tz_name'])} · "
+            f"{utc_offset_label(person['tz_name'], meeting_date)} on {meeting_date.strftime('%d %b %Y')}"
+        )
+        participant_region = f"UN M49 geography: {un_region_label(country_code)}"
 
-        with top_right:
+        top_name, top_meta, top_remove = st.columns([1.55, 6.45, 1.15])
+
+        with top_name:
+            st.markdown(f"**{participant_name}**")
+
+        with top_meta:
+            st.markdown(
+                f"""
+                <div class="participant-meta">
+                    {participant_meta}<br>
+                    {participant_region}
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
+
+        with top_remove:
             if st.button("Remove", key=f"remove_{pid}", use_container_width=True):
                 st.session_state.people_v2 = [p for p in people if p["id"] != pid]
                 st.rerun()
@@ -1760,20 +1797,6 @@ for index, person in enumerate(list(people)):
                 label_visibility="collapsed",
             )
 
-        country_code = person.get("country_code", "")
-        base_country_label = country_display_name(country_code)
-        location_label = base_country_label
-        if country_code == "US" and person.get("state"):
-            location_label = f"{person['state']}, {base_country_label}"
-
-        st.caption(
-            f"{location_label} · "
-            f"{friendly_zone_name(person['tz_name'])} · "
-            f"{utc_offset_label(person['tz_name'], meeting_date)} on {meeting_date.strftime('%d %b %Y')}"
-        )
-        st.caption(
-            f"UN M49 geography: {un_region_label(country_code)}"
-        )
 
 add_col, reset_col, spacer = st.columns([1.3, 1.3, 5])
 
