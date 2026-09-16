@@ -43,9 +43,12 @@ st.markdown(
         }
 
         .block-container {
-            max-width: 1480px;
-            padding-top: 0.70rem;
-            padding-bottom: 0.70rem;
+            max-width: none !important;
+            width: 100% !important;
+            padding-top: 0.45rem !important;
+            padding-bottom: 0.65rem !important;
+            padding-left: 0.45rem !important;
+            padding-right: 0.45rem !important;
         }
 
         div[data-testid="stVerticalBlock"] {
@@ -53,7 +56,7 @@ st.markdown(
         }
 
         div[data-testid="stHorizontalBlock"] {
-            gap: 0.60rem;
+            gap: 0.38rem;
         }
 
         .stMarkdown p {
@@ -67,7 +70,7 @@ st.markdown(
         }
 
         .dc-title {
-            font-size: clamp(2rem, 3vw, 2.65rem);
+            font-size: clamp(1.70rem, 2.6vw, 2.35rem);
             line-height: 1.02;
             font-weight: 750;
             color: var(--dc-charcoal);
@@ -135,6 +138,35 @@ st.markdown(
             min-height: 2.20rem !important;
         }
 
+        /* Keep participant controls readable in embedded / narrower layouts. */
+        div[data-testid="stTextInput"] input,
+        div[data-testid="stTimeInput"] input,
+        div[data-testid="stSelectbox"] input {
+            font-size: 0.86rem !important;
+        }
+
+        div[data-testid="stVerticalBlockBorderWrapper"] {
+            padding-left: 0.10rem !important;
+            padding-right: 0.10rem !important;
+        }
+
+        @media (max-width: 980px) {
+            .block-container {
+                padding-left: 0.30rem !important;
+                padding-right: 0.30rem !important;
+            }
+
+            section[data-testid="stSidebar"],
+            section[data-testid="stSidebar"] > div {
+                width: 205px !important;
+                min-width: 205px !important;
+            }
+
+            .dc-subtitle {
+                font-size: 0.84rem;
+            }
+        }
+
         div[data-testid="stMetric"] {
             background: var(--dc-light);
             border: 1px solid var(--dc-border);
@@ -145,6 +177,25 @@ st.markdown(
         section[data-testid="stSidebar"] {
             background: linear-gradient(180deg, #fffafd 0%, #f8f2f6 100%);
             border-right: 1px solid var(--dc-border);
+            width: 218px !important;
+            min-width: 218px !important;
+        }
+
+        section[data-testid="stSidebar"] > div {
+            width: 218px !important;
+            min-width: 218px !important;
+        }
+
+        section[data-testid="stSidebar"] [data-testid="stSidebarUserContent"] {
+            padding-left: 0.65rem !important;
+            padding-right: 0.65rem !important;
+            padding-top: 0.45rem !important;
+        }
+
+        section[data-testid="stSidebar"] .stMarkdown p,
+        section[data-testid="stSidebar"] label,
+        section[data-testid="stSidebar"] .stCaptionContainer {
+            font-size: 0.78rem !important;
         }
 
         div[data-testid="stDataFrame"] {
@@ -1512,7 +1563,8 @@ with st.sidebar:
     st.divider()
 
     if LOGO_PATH.exists():
-        st.image(str(LOGO_PATH), width=120)
+        st.image(str(LOGO_PATH), width=118)
+        st.markdown("<div style='height:0.20rem;'></div>", unsafe_allow_html=True)
 
     st.markdown(
         """
@@ -1543,7 +1595,7 @@ for index, person in enumerate(list(people)):
     pid = person["id"]
 
     with st.container(border=True):
-        top_left, top_right = st.columns([8, 1])
+        top_left, top_right = st.columns([9, 1])
 
         with top_left:
             st.markdown(f"**{person['name'] or f'Person {index + 1}'}**")
@@ -1553,7 +1605,7 @@ for index, person in enumerate(list(people)):
                 st.session_state.people_v2 = [p for p in people if p["id"] != pid]
                 st.rerun()
 
-        c1, c2, c3, c4, c5 = st.columns([1.2, 1.2, 2.2, 1, 1])
+        c1, c2, c3, c4, c5 = st.columns([1.05, 1.20, 1.85, 0.90, 0.90])
 
         with c1:
             person["name"] = st.text_input(
