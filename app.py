@@ -2341,12 +2341,15 @@ with st.expander("Full 24-hour comparison", expanded=False):
 
         for p in people:
             local = utc_dt.astimezone(ZoneInfo(p["tz_name"]))
-            _, status = score_local(
+            timeline_score = score_local_detailed(
                 local,
                 local + timedelta(minutes=duration),
                 p["earliest"],
                 p["latest"],
+                country_code=p.get("country_code"),
+                subdivision=p.get("state"),
             )
+            status = timeline_score.status
             timeline_row[p["name"]] = (
                 f"{local.strftime('%a %H:%M')} · "
                 f"{utc_offset_label(p['tz_name'], local.date())} · {status}"
