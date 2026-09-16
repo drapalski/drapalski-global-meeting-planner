@@ -250,7 +250,32 @@ st.markdown(
         a {
             color: var(--dc-pink) !important;
         }
-    </style>
+    
+        /* Compact embedded typography: reduce visible text by ~30%. */
+        html, body, [class*="css"], [data-testid="stAppViewContainer"] {
+            font-size: 70% !important;
+        }
+
+        /* Streamlit widgets often set their own font sizes, so scale those too. */
+        p, span, label, div, button, input, textarea,
+        [data-baseweb="select"] *,
+        [data-testid="stMarkdownContainer"] *,
+        [data-testid="stCaptionContainer"] *,
+        [data-testid="stMetric"] *,
+        [data-testid="stDataFrame"] *,
+        [data-testid="stSidebar"] *,
+        [role="button"],
+        [role="option"] {
+            font-size: 0.70em !important;
+        }
+
+        /* Preserve headings as headings while still making them ~30% smaller. */
+        h1 { font-size: 1.75rem !important; }
+        h2 { font-size: 1.40rem !important; }
+        h3 { font-size: 1.15rem !important; }
+        h4 { font-size: 1.00rem !important; }
+
+</style>
 
     <div class="dc-brand">
         <div class="dc-title">Global Meeting Planner</div>
