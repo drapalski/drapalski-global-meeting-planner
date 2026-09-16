@@ -251,8 +251,8 @@ st.markdown(
             background:#34363a;
             color:#f7f7f7;
             border-radius:6px;
-            padding:0.36rem 0.45rem;
-            font-size:0.72rem;
+            padding:0.40rem 0.45rem;
+            font-size:0.82rem;
             font-weight:700;
             text-align:center;
             line-height:1.15;
@@ -270,6 +270,24 @@ st.markdown(
         .participant-meta strong {
             color:#55585d;
             font-weight:600;
+        }
+
+        /* Participant remove buttons */
+        div[class*="st-key-remove_"] .stButton > button {
+            background:#ff66c4 !important;
+            border-color:#ff66c4 !important;
+            color:#111111 !important;
+            font-size:0.70rem !important;
+            font-weight:600 !important;
+            min-height:1.85rem !important;
+            padding:0.20rem 0.55rem !important;
+            border-radius:6px !important;
+        }
+
+        div[class*="st-key-remove_"] .stButton > button:hover {
+            background:#cd549e !important;
+            border-color:#cd549e !important;
+            color:#111111 !important;
         }
 
         a {
