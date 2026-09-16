@@ -9,6 +9,12 @@ import importlib.resources as resources
 
 from pathlib import Path
 
+from meeting_scoring import (
+    aggregate_meeting_score,
+    score_local_detailed,
+    scoring_methodology_summary,
+)
+
 APP_DIR = Path(__file__).parent
 LOGO_PATH = APP_DIR / "assets" / "drapalski_logo.png"
 
@@ -272,6 +278,14 @@ st.markdown(
             white-space:nowrap;
         }
 
+        @media (max-width: 768px) {
+            .participant-header {
+                margin-bottom:0.45rem !important;
+                padding-top:0.52rem !important;
+                padding-bottom:0.52rem !important;
+            }
+        }
+
         .participant-meta {
             color:#74777c;
             font-size:0.70rem;
@@ -284,17 +298,30 @@ st.markdown(
             font-weight:600;
         }
 
-        /* Participant remove buttons */
+        /* Participant remove buttons: compact corner X */
+        div[class*="st-key-remove_"] {
+            display:flex !important;
+            justify-content:flex-end !important;
+            align-items:flex-start !important;
+        }
+
+        div[class*="st-key-remove_"] .stButton {
+            width:auto !important;
+        }
+
         div[class*="st-key-remove_"] .stButton > button {
             background:#ff66c4 !important;
             border-color:#ff66c4 !important;
             color:#111111 !important;
             font-size:8px !important;
             font-weight:700 !important;
-            min-height:1.55rem !important;
-            height:1.55rem !important;
-            padding:0.05rem 0.28rem !important;
-            border-radius:5px !important;
+            width:20px !important;
+            min-width:20px !important;
+            max-width:20px !important;
+            min-height:20px !important;
+            height:20px !important;
+            padding:0 !important;
+            border-radius:4px !important;
             line-height:1 !important;
         }
 
@@ -1116,45 +1143,6 @@ def minutes_of_day(t: time) -> int:
     return t.hour * 60 + t.minute
 
 
-def score_local(local_start: datetime, local_end: datetime, earliest: time, latest: time):
-    """Score a proposed local meeting against a person's preferred window."""
-    s = minutes_of_day(local_start.time())
-    e = minutes_of_day(local_end.time())
-    pref_start = minutes_of_day(earliest)
-    pref_end = minutes_of_day(latest)
-
-    # Simple same-day preferred-window model.
-    fully_inside = (
-        local_start.date() == local_end.date()
-        and pref_start <= s
-        and e <= pref_end
-    )
-
-    if fully_inside:
-        center = (pref_start + pref_end) / 2
-        meeting_center = (s + e) / 2
-        half = max((pref_end - pref_start) / 2, 60)
-        comfort = 100 - 20 * abs(meeting_center - center) / half
-        return max(80, min(100, comfort)), "Preferred"
-
-    # Distance to the preferred window using meeting start/end.
-    if e < pref_start:
-        delta = pref_start - e
-    elif s > pref_end:
-        delta = s - pref_end
-    else:
-        # Partly overlaps the preferred window.
-        return 70, "Possible"
-
-    if delta <= 60:
-        return 60, "Possible"
-    if delta <= 120:
-        return 40, "Difficult"
-    if delta <= 240:
-        return 20, "Very difficult"
-    return 0, "Unreasonable"
-
-
 # ---------- Visualization helpers ----------
 
 PARTICIPANT_COLORS = [
@@ -1717,7 +1705,7 @@ for index, person in enumerate(list(people)):
         )
         participant_region = f"UN M49 geography: {un_region_label(country_code)}"
 
-        top_name, top_meta, top_remove = st.columns([1.55, 6.45, 1.15])
+        top_name, top_meta, top_remove = st.columns([1.55, 7.15, 0.30])
 
         with top_name:
             st.markdown(f"**{participant_name}**")
@@ -1737,7 +1725,7 @@ for index, person in enumerate(list(people)):
             if st.button(
                 "×",
                 key=f"remove_{pid}",
-                use_container_width=True,
+                use_container_width=False,
                 help="Remove party",
             ):
                 st.session_state.people_v2 = [p for p in people if p["id"] != pid]
@@ -2071,80 +2059,167 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
-st.markdown("#### Availability across the day · UTC")
+st.markdown("#### Availability across the day")
 
 band_fig = go.Figure()
-legend_seen = set()
 
-for p in people:
+utc_anchor = datetime.combine(
+    meeting_date,
+    time(0, 0),
+    tzinfo=ZoneInfo("UTC"),
+)
+
+# Numeric y positions give us enough control to place local-time labels and
+# local-midnight day separators around each participant's availability bar.
+for row_idx, p in enumerate(people):
+    # Subtle alternating-day background on the row.
+    tz = ZoneInfo(p["tz_name"])
+    local_at_utc_start = utc_anchor.astimezone(tz)
+    next_local_date = local_at_utc_start.date() + timedelta(days=1)
+    next_midnight_local = datetime.combine(
+        next_local_date,
+        time(0, 0),
+        tzinfo=tz,
+    )
+    next_midnight_utc = next_midnight_local.astimezone(ZoneInfo("UTC"))
+    midnight_x = (next_midnight_utc - utc_anchor).total_seconds() / 3600
+
+    if 0 < midnight_x < 24:
+        # A light blended tint marks the portion belonging to the next local day.
+        band_fig.add_shape(
+            type="rect",
+            x0=midnight_x,
+            x1=24,
+            y0=row_idx - 0.33,
+            y1=row_idx + 0.33,
+            xref="x",
+            yref="y",
+            fillcolor="rgba(205,84,158,0.035)",
+            line=dict(width=0),
+            layer="below",
+        )
+        band_fig.add_shape(
+            type="line",
+            x0=midnight_x,
+            x1=midnight_x,
+            y0=row_idx - 0.43,
+            y1=row_idx + 0.43,
+            xref="x",
+            yref="y",
+            line=dict(color="#8f949a", width=1, dash="dot"),
+            layer="above",
+        )
+        band_fig.add_annotation(
+            x=midnight_x + 0.08,
+            y=row_idx - 0.48,
+            text=next_local_date.strftime("%a"),
+            showarrow=False,
+            xanchor="left",
+            yanchor="middle",
+            font=dict(size=8, color="#6b6f75"),
+        )
+
+    # Availability / awake / sleep shading.
     for label, start_hour, width_hours in local_clock_segments_utc(p, meeting_date):
-        show_legend = False
-        legend_seen.add(label)
-
         band_fig.add_trace(
             go.Bar(
-                y=[p["name"]],
+                y=[row_idx],
                 x=[width_hours],
                 base=[start_hour],
+                width=0.46,
                 orientation="h",
                 marker=dict(
                     color=STATUS_COLORS[label],
-                    line=dict(color="#FFFFFF", width=0.5),
+                    line=dict(color="rgba(255,255,255,0.55)", width=0.5),
                 ),
                 name=label,
-                legendgroup=label,
-                showlegend=show_legend,
+                showlegend=False,
                 hovertemplate=(
                     f"<b>{p['name']}</b><br>"
                     f"{label}<br>"
-                    f"{p['tz_name']} · {utc_offset_label(p['tz_name'], meeting_date)}"
+                    f"{friendly_zone_name(p['tz_name'])} · "
+                    f"{utc_offset_label(p['tz_name'], meeting_date)}"
                     "<extra></extra>"
                 ),
             )
         )
 
+    # Local clock labels every two UTC hours, placed just above each row.
+    for utc_hour in range(0, 24, 2):
+        local_dt = (utc_anchor + timedelta(hours=utc_hour)).astimezone(tz)
+        band_fig.add_annotation(
+            x=utc_hour,
+            y=row_idx - 0.31,
+            text=local_dt.strftime("%H:%M"),
+            showarrow=False,
+            xanchor="center",
+            yanchor="middle",
+            font=dict(size=8, color="#697f9f"),
+        )
+
+# Proposed meeting selection: display the full duration, not just a start line.
 selected_utc_hour = (
     map_reference_utc.hour
     + map_reference_utc.minute / 60
     + map_reference_utc.second / 3600
 )
+meeting_width_hours = duration / 60
+meeting_end_hour = selected_utc_hour + meeting_width_hours
 
-band_fig.add_vline(
-    x=selected_utc_hour,
-    line_width=2,
-    line_dash="dash",
-    line_color="#111111",
-    annotation_text=(
-        f"{reference_local.strftime('%H:%M')} {reference_offset} → "
-        f"{map_reference_utc.strftime('%H:%M')} UTC"
-    ),
-    annotation_position="top",
-    annotation_font=dict(size=9, color="#111111"),
-)
+def _add_meeting_window(x0, x1, annotation=False):
+    kwargs = dict(
+        x0=x0,
+        x1=x1,
+        fillcolor="rgba(17,17,17,0.055)",
+        line=dict(color="#111111", width=2),
+        layer="above",
+    )
+    if annotation:
+        kwargs["annotation_text"] = (
+            f"{reference_local.strftime('%H:%M')} "
+            f"{reference_offset} · {duration} min"
+        )
+        kwargs["annotation_position"] = "top"
+        kwargs["annotation_font"] = dict(size=9, color="#111111")
+    band_fig.add_vrect(**kwargs)
+
+if meeting_end_hour <= 24:
+    _add_meeting_window(selected_utc_hour, meeting_end_hour, annotation=True)
+else:
+    _add_meeting_window(selected_utc_hour, 24, annotation=True)
+    _add_meeting_window(0, meeting_end_hour - 24, annotation=False)
+
+band_height = max(220, 92 + len(people) * 68)
 
 band_fig.update_layout(
     barmode="overlay",
-    height=max(180, 70 + len(people) * 36),
-    margin=dict(l=5, r=5, t=0, b=20),
+    height=band_height,
+    margin=dict(l=5, r=5, t=24, b=28),
     paper_bgcolor="rgba(0,0,0,0)",
     plot_bgcolor="#fbfbfb",
+    bargap=0.36,
     xaxis=dict(
         range=[0, 24],
         tickmode="array",
-        tickvals=list(range(0, 25, 3)),
-        ticktext=[f"{h:02d}" for h in range(0, 25, 3)],
-        title="UTC",
-        title_font=dict(size=10),
-        tickfont=dict(size=9),
-        gridcolor="#e5e4e5",
+        tickvals=list(range(0, 25, 2)),
+        ticktext=[f"{h:02d}" for h in range(0, 25, 2)],
+        title="UTC reference",
+        title_font=dict(size=9),
+        tickfont=dict(size=8, color="#8a8f96"),
+        gridcolor="#e8e7e8",
+        gridwidth=1,
         zeroline=False,
+        side="bottom",
     ),
     yaxis=dict(
         title="",
-        categoryorder="array",
-        categoryarray=[p["name"] for p in people[::-1]],
-        gridcolor="rgba(0,0,0,0)",
+        tickmode="array",
+        tickvals=list(range(len(people))),
+        ticktext=[p["name"] for p in people],
         tickfont=dict(size=10),
+        range=[len(people) - 0.35, -0.70],
+        gridcolor="rgba(0,0,0,0)",
+        zeroline=False,
     ),
     showlegend=False,
 )
@@ -2156,8 +2231,9 @@ st.plotly_chart(
 )
 
 st.caption(
-    "The dashed line marks the proposed meeting instant on the UTC timeline. "
-    "Each participant’s selected availability drives the available segments and the meeting-ranking calculation."
+    "Local clock times are shown above each participant row in two-hour increments. "
+    "The outlined panel is the proposed meeting window and its width reflects the selected meeting length. "
+    "A dotted separator marks that participant’s local midnight and labels the next local day."
 )
 
 
@@ -2184,12 +2260,16 @@ for step in range(steps):
         local_start = start_utc.astimezone(tz)
         local_end = end_utc.astimezone(tz)
 
-        score, status = score_local(
+        score_detail = score_local_detailed(
             local_start,
             local_end,
             p["earliest"],
             p["latest"],
+            country_code=p.get("country_code"),
+            subdivision=p.get("state"),
         )
+        score = score_detail.total_score
+        status = score_detail.status
 
         scores.append(score)
         worst_score = min(worst_score, score)
@@ -2200,14 +2280,15 @@ for step in range(steps):
         row[p["id"]] = local_start
         row[p["id"] + "_status"] = status
         row[p["id"] + "_score"] = score
+        row[p["id"] + "_score_detail"] = score_detail.as_dict()
 
-    average_score = sum(scores) / len(scores)
-    overall_score = 0.65 * average_score + 0.35 * worst_score
+    meeting_score = aggregate_meeting_score(scores)
 
-    row["Average score"] = round(average_score, 1)
-    row["Worst-person score"] = worst_score
+    row["Average score"] = meeting_score.average_participant_score
+    row["Worst-person score"] = meeting_score.worst_participant_score
+    row["Fairness score"] = meeting_score.fairness_score
     row["Preferred count"] = preferred_count
-    row["Overall score"] = round(overall_score, 1)
+    row["Overall score"] = meeting_score.overall_score
 
     candidate_rows.append(row)
 
@@ -2220,7 +2301,7 @@ results = pd.DataFrame(candidate_rows).sort_values(
 # ---------- Best times ----------
 
 st.subheader("Best meeting times")
-st.caption("The planner ranks options by how comfortably they fit everyone’s selected local availability.")
+st.caption(scoring_methodology_summary())
 
 top_n = st.slider("How many options to show", 3, 10, 4)
 
