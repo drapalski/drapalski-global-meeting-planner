@@ -1841,6 +1841,15 @@ def default_people():
             "earliest": time(8, 0),
             "latest": time(17, 0),
         },
+        {
+            "id": new_id(),
+            "name": "Australia team",
+            "location": "Australia",
+            "country_code": "AU",
+            "tz_name": "Australia/Sydney",
+            "earliest": time(8, 0),
+            "latest": time(17, 0),
+        },
     ]
 
 
@@ -2031,9 +2040,10 @@ with st.sidebar:
 
     with setup_open_col:
         open_saved_setup = st.button(
-            "Open setup",
+            "Upload",
             use_container_width=True,
             key="load_preset_button",
+            help="Upload / open a previously saved meeting setup.",
         )
 
     # Populated later after the participant editor has the current values.
@@ -2364,13 +2374,13 @@ preset_json = json.dumps(preset_payload, indent=2, ensure_ascii=False)
 
 with preset_download_slot:
     st.download_button(
-        "Save setup",
+        "Download",
         data=preset_json,
         file_name=f"meeting_setup_{meeting_date.isoformat()}.json",
         mime="application/json",
         use_container_width=True,
         key="download_preset_button",
-        help="Save the current people, hours, and meeting settings so you can reuse them later.",
+        help="Download / save the current people, hours, and meeting settings for reuse later.",
     )
 
 if not people:
