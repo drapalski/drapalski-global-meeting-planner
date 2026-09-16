@@ -1882,14 +1882,6 @@ for p in people:
     local_dt = map_reference_utc.astimezone(ZoneInfo(p["tz_name"]))
     status_label, status_color = local_status(p, local_dt)
 
-    center_lon = utc_offset_hours(p["tz_name"], meeting_date) * 15
-    while center_lon > 180:
-        center_lon -= 360
-    while center_lon < -180:
-        center_lon += 360
-
-    add_timezone_band(world_fig, center_lon, status_color)
-
     (lat, lon), approximate = approximate_map_coords(p, meeting_date)
     approx_text = " · approximate point" if approximate else ""
 
@@ -1917,22 +1909,6 @@ for p in people:
         )
     )
 
-for status_label, display_name in [
-    ("Available", "Inside selected availability"),
-    ("Outside availability", "Awake outside availability"),
-    ("Sleep hours", "Sleep · 00–06"),
-]:
-    world_fig.add_trace(
-        go.Scattergeo(
-            lat=[None],
-            lon=[None],
-            mode="markers",
-            marker=dict(size=9, color=STATUS_COLORS[status_label]),
-            name=display_name,
-            hoverinfo="skip",
-        )
-    )
-
 world_fig.update_geos(
     projection_type="equal earth",
     showland=True,
@@ -1952,20 +1928,41 @@ world_fig.update_layout(
     margin=dict(l=0, r=0, t=0, b=0),
     paper_bgcolor="rgba(0,0,0,0)",
     plot_bgcolor="rgba(0,0,0,0)",
-    legend=dict(
-        orientation="h",
-        yanchor="top",
-        y=-0.01,
-        xanchor="left",
-        x=0,
-        font=dict(size=10, color="#4f5358"),
-    ),
+    showlegend=False,
 )
 
 st.plotly_chart(
     world_fig,
     use_container_width=True,
     config={"displayModeBar": False, "responsive": True},
+)
+
+reference_offset = utc_offset_label(reference_tz, meeting_date)
+
+st.markdown(
+    f"""
+    <div style="
+        font-size:0.78rem;
+        line-height:1.55;
+        color:#62656b;
+        margin-top:-0.20rem;
+        margin-bottom:0.45rem;
+        padding:0.35rem 0.10rem 0.40rem 0.10rem;
+        border-bottom:1px solid #eadde6;
+    ">
+        <strong>Proposed meeting:</strong>
+        {reference_local.strftime('%H:%M')} in {friendly_zone_name(reference_tz)}
+        ({reference_offset})
+        · {map_reference_utc.strftime('%H:%M')} UTC
+        <br>
+        <span style="color:#4f9b63;font-weight:700;">● Green</span> inside selected availability
+        &nbsp;&nbsp;
+        <span style="color:#8F3548;font-weight:700;">● Pink</span> awake but outside availability
+        &nbsp;&nbsp;
+        <span style="color:#E59A45;font-weight:700;">● Orange</span> 00:00–06:00 local sleep hours
+    </div>
+    """,
+    unsafe_allow_html=True,
 )
 
 st.markdown("#### Availability across the day · UTC")
@@ -1975,7 +1972,7 @@ legend_seen = set()
 
 for p in people:
     for label, start_hour, width_hours in local_clock_segments_utc(p, meeting_date):
-        show_legend = label not in legend_seen
+        show_legend = False
         legend_seen.add(label)
 
         band_fig.add_trace(
@@ -1999,6 +1996,25 @@ for p in people:
                 ),
             )
         )
+
+selected_utc_hour = (
+    map_reference_utc.hour
+    + map_reference_utc.minute / 60
+    + map_reference_utc.second / 3600
+)
+
+band_fig.add_vline(
+    x=selected_utc_hour,
+    line_width=2,
+    line_dash="dash",
+    line_color="#111111",
+    annotation_text=(
+        f"{reference_local.strftime('%H:%M')} {reference_offset} → "
+        f"{map_reference_utc.strftime('%H:%M')} UTC"
+    ),
+    annotation_position="top",
+    annotation_font=dict(size=9, color="#111111"),
+)
 
 band_fig.update_layout(
     barmode="overlay",
@@ -2024,14 +2040,7 @@ band_fig.update_layout(
         gridcolor="rgba(0,0,0,0)",
         tickfont=dict(size=10),
     ),
-    legend=dict(
-        orientation="h",
-        yanchor="bottom",
-        y=1.01,
-        xanchor="left",
-        x=0,
-        font=dict(size=9, color="#4f5358"),
-    ),
+    showlegend=False,
 )
 
 st.plotly_chart(
@@ -2040,27 +2049,11 @@ st.plotly_chart(
     config={"displayModeBar": False, "responsive": True},
 )
 
-st.markdown(
-    f"""
-    <div style="font-size:0.78rem;line-height:1.55;color:#62656b;margin-top:-0.15rem;margin-bottom:0.30rem;">
-        <strong>Proposed meeting:</strong>
-        {reference_local.strftime('%H:%M')} in {friendly_zone_name(reference_tz)}
-        {" · browser time zone" if reference_tz == browser_timezone else " · selected reference zone"}
-        · {map_reference_utc.strftime('%H:%M')} UTC
-        <br>
-        <span style="color:#4f9b63;font-weight:700;">● Green</span> inside that participant’s selected availability
-        &nbsp;&nbsp;
-        <span style="color:#cd549e;font-weight:700;">● Pink</span> awake but outside availability
-        &nbsp;&nbsp;
-        <span style="color:#e59a45;font-weight:700;">● Orange</span> 00:00–06:00 local sleep hours
-        <br>
-        Each participant’s <strong>Available from / Available until</strong> window drives the green status
-        and is preferred by the meeting-ranking calculation. New participants default to 08:00–17:00 local time.
-        Map bands are scheduling guides, not legal timezone borders.
-    </div>
-    """,
-    unsafe_allow_html=True,
+st.caption(
+    "The dashed line marks the proposed meeting instant on the UTC timeline. "
+    "Each participant’s selected availability drives the green segments and the meeting-ranking calculation."
 )
+
 
 
 # ---------- Candidate calculation ----------
