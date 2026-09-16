@@ -231,13 +231,6 @@ st.markdown(
             background: #ffffff;
         }
 
-        /* Participant cards only: lighter shading and a little separation. */
-        div[data-testid="stVerticalBlockBorderWrapper"]:has(div[class*="st-key-remove_"]) {
-            position: relative !important;
-            background: rgba(255, 248, 252, 0.48) !important;
-            margin-bottom: 0.38rem !important;
-        }
-
         /* Slightly tighter card interiors, especially in the participant editor. */
         div[data-testid="stVerticalBlockBorderWrapper"] > div {
             padding-top: 0.26rem !important;
@@ -406,14 +399,9 @@ st.markdown(
 
         @media (max-width: 768px) {
             .participant-header {
-                background:rgba(205, 84, 158, 0.07) !important;
-                color:#5f5f64 !important;
-                border:1px solid rgba(205, 84, 158, 0.14) !important;
-                border-radius:5px !important;
-                margin-bottom:0.18rem !important;
-                padding:0.30rem 0.40rem !important;
-                font-size:0.72rem !important;
-                font-weight:650 !important;
+                margin-bottom:0.45rem !important;
+                padding-top:0.52rem !important;
+                padding-bottom:0.52rem !important;
             }
         }
 
@@ -423,7 +411,6 @@ st.markdown(
             line-height:1.42;
             padding-top:0.05rem;
             padding-bottom:0.14rem;
-            padding-right:1.65rem;
         }
 
         .participant-meta strong {
@@ -433,17 +420,9 @@ st.markdown(
 
         /* Participant remove buttons: tiny corner X */
         div[class*="st-key-remove_"] {
-            position:absolute !important;
-            top:0.46rem !important;
-            right:0.46rem !important;
-            z-index:10 !important;
-            width:16px !important;
-            height:16px !important;
             display:flex !important;
             justify-content:flex-end !important;
             align-items:flex-start !important;
-            margin:0 !important;
-            padding:0 !important;
         }
 
         div[class*="st-key-remove_"] button {
