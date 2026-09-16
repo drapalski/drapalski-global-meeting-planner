@@ -247,6 +247,19 @@ st.markdown(
             letter-spacing: 0.08em;
         }
 
+        .participant-header {
+            background:#34363a;
+            color:#f7f7f7;
+            border-radius:6px;
+            padding:0.36rem 0.45rem;
+            font-size:0.72rem;
+            font-weight:700;
+            text-align:center;
+            line-height:1.15;
+            margin-bottom:0.18rem;
+            white-space:nowrap;
+        }
+
         a {
             color: var(--dc-pink) !important;
         }
@@ -1629,6 +1642,19 @@ st.caption(
 
 people = st.session_state.people_v2
 
+# One shared header row keeps the participant cards compact and avoids
+# repeating the same field labels for every person.
+h1, h2, h3, h4, h5 = st.columns([1.05, 1.20, 1.85, 0.90, 0.90])
+for col, label in zip(
+    [h1, h2, h3, h4, h5],
+    ["Name", "Country / area + state", "Time zone", "Available from", "Available until"],
+):
+    with col:
+        st.markdown(
+            f'<div class="participant-header">{label}</div>',
+            unsafe_allow_html=True,
+        )
+
 for index, person in enumerate(list(people)):
     pid = person["id"]
 
@@ -1650,6 +1676,7 @@ for index, person in enumerate(list(people)):
                 "Name",
                 value=person["name"],
                 key=f"name_{pid}",
+                label_visibility="collapsed",
             )
 
         with c2:
@@ -1661,6 +1688,7 @@ for index, person in enumerate(list(people)):
                 format_func=lambda code: country_display_name(code),
                 key=f"country_{pid}",
                 help="Choose the participant's country or area.",
+                label_visibility="collapsed",
             )
             person["country_code"] = selected_country
             person["location"] = COUNTRY_NAMES[selected_country]
@@ -1673,6 +1701,7 @@ for index, person in enumerate(list(people)):
                     index=US_STATES.index(current_state),
                     key=f"state_{pid}_{selected_country}",
                     help="The state narrows the U.S. time-zone choices.",
+                    label_visibility="collapsed",
                 )
             else:
                 person["state"] = ""
@@ -1698,6 +1727,7 @@ for index, person in enumerate(list(people)):
                     key=f"tz_display_{pid}_{selected_country}_{person.get('state', '')}",
                     disabled=True,
                     help="Selected automatically from the country/state.",
+                    label_visibility="collapsed",
                 )
             else:
                 person["tz_name"] = st.selectbox(
@@ -1707,6 +1737,7 @@ for index, person in enumerate(list(people)):
                     format_func=lambda z: zone_display(z, meeting_date),
                     key=f"tz_{pid}_{selected_country}_{person.get('state', '')}",
                     help="Only the time zones relevant to this country/state are shown.",
+                    label_visibility="collapsed",
                 )
 
         with c4:
@@ -1716,6 +1747,7 @@ for index, person in enumerate(list(people)):
                 step=900,
                 key=f"earliest_{pid}",
                 help="This person's selected availability. It overrides the default 08:00–17:00 business-hours assumption.",
+                label_visibility="collapsed",
             )
 
         with c5:
@@ -1725,6 +1757,7 @@ for index, person in enumerate(list(people)):
                 step=900,
                 key=f"latest_{pid}",
                 help="The planner treats meetings inside this person's selected availability as preferred.",
+                label_visibility="collapsed",
             )
 
         country_code = person.get("country_code", "")
