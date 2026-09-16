@@ -2695,11 +2695,11 @@ st.markdown(
                 color:#62656b;
             ">
                 <strong style="color:#202226;">Composite scoring model:</strong>
-                30% selected availability, 20% business-hours fit, 20% human convenience,
-                15% local workweek/norms, and 15% public-holiday calendar.
-                Hard caps apply to meetings outside availability, during sleep, in configured
-                non-working periods, or on public holidays. Overall meeting ranking =
-                65% participant average + 35% lowest participant score.
+                35% selected availability, 20% business-hours fit, 20% human convenience,
+                5% day-of-workweek preference, 10% local workweek/norms, and 10% public holidays.
+                Mid-morning and early afternoon are soft defaults, not hard rules.
+                Overall ranking = 55% participant average + 35% lowest participant
+                + 10% snapshot fairness.
             </div>
         </div>
     </div>
@@ -2711,16 +2711,16 @@ top_n = st.slider("How many options to show", 3, 10, 4)
 
 display_results = results.head(top_n).copy()
 
-# Build score tiers so equal composite scores receive the same visual emphasis.
+# Equal composite scores share the same visual emphasis.
 unique_scores = sorted(
     {round(float(score), 6) for score in display_results["Overall score"]},
     reverse=True,
 )
 
 tier_backgrounds = [
-    "#ffd0ec",  # brightest pink: highest score
-    "#fde3f3",  # medium pink
-    "#fff1f8",  # light pink
+    "#ffd0ec",  # highest unique score
+    "#fde3f3",  # second unique score
+    "#fff1f8",  # third/lower unique score
 ]
 tier_scorebox_backgrounds = [
     "#ff9fd6",
@@ -2736,7 +2736,8 @@ for rank, (_, row) in enumerate(display_results.iterrows(), start=1):
     card_bg = tier_backgrounds[palette_index]
     scorebox_bg = tier_scorebox_backgrounds[palette_index]
 
-    people_html = []
+    people_parts = []
+
     for p in people:
         local = row[p["id"]]
         status = row[p["id"] + "_status"]
@@ -2749,41 +2750,35 @@ for rank, (_, row) in enumerate(display_results.iterrows(), start=1):
         )
         status_text = html.escape(str(status))
 
-        people_html.append(
-            f"""
-            <div class="ranked-proposal-person">
-                <strong>{person_name}</strong>
-                · {local.strftime('%a %d %b %Y')}
-                · {local.strftime('%H:%M')}
-                <span class="ranked-proposal-meta">
-                    · {place} · {tz_abbrev} · {utc_offset} · {status_text}
-                </span>
-            </div>
-            """
+        people_parts.append(
+            '<div class="ranked-proposal-person">'
+            f'<strong>{person_name}</strong>'
+            f' · {local.strftime("%a %d %b %Y")}'
+            f' · {local.strftime("%H:%M")}'
+            '<span class="ranked-proposal-meta">'
+            f' · {place} · {tz_abbrev} · {utc_offset} · {status_text}'
+            '</span>'
+            '</div>'
         )
 
-    st.markdown(
-        f"""
-        <div class="ranked-proposal-card" style="background:{card_bg};">
-            <div class="ranked-proposal-left">
-                <div class="ranked-proposal-title">
-                    #{rank} · Score {float(row['Overall score']):.0f}/100
-                </div>
-                <div class="ranked-proposal-people">
-                    {''.join(people_html)}
-                </div>
-            </div>
-
-            <div class="ranked-proposal-scorebox" style="background:{scorebox_bg};">
-                <div class="ranked-proposal-scorebox-label">Preferred</div>
-                <div class="ranked-proposal-scorebox-value">
-                    {int(row['Preferred count'])}/{len(people)}
-                </div>
-            </div>
-        </div>
-        """,
-        unsafe_allow_html=True,
+    card_html = (
+        f'<div class="ranked-proposal-card" style="background:{card_bg};">'
+        '<div class="ranked-proposal-left">'
+        f'<div class="ranked-proposal-title">#{rank} · Score {float(row["Overall score"]):.0f}/100</div>'
+        '<div class="ranked-proposal-people">'
+        + ''.join(people_parts)
+        + '</div>'
+        '</div>'
+        f'<div class="ranked-proposal-scorebox" style="background:{scorebox_bg};">'
+        '<div class="ranked-proposal-scorebox-label">Preferred</div>'
+        f'<div class="ranked-proposal-scorebox-value">{int(row["Preferred count"])}/{len(people)}</div>'
+        '</div>'
+        '</div>'
     )
+
+    # st.html renders raw HTML directly and avoids Markdown treating the nested
+    # participant markup as a code block.
+    st.html(card_html)
 
 
 # ---------- Email-ready proposal ----------

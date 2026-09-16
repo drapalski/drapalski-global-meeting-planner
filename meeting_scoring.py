@@ -2,26 +2,38 @@
 meeting_scoring.py
 ==================
 
-Standalone deterministic scoring engine for the Drapalski Global Meeting Planner.
+Deterministic, reviewable scoring engine for the Drapalski Global Meeting Planner.
 
-The Streamlit user interface belongs in app.py.
-All scoring assumptions belong here.
+The Streamlit interface belongs in app.py. Meeting-ranking assumptions belong here.
 
-DESIGN GOALS
+MODEL DESIGN
 ------------
-1. Transparent: every score is decomposed into named components.
-2. Deterministic: same inputs + same model version = same result.
-3. User-led: explicit participant availability is the strongest input.
-4. Extensible: local-norm profiles and holiday calendars are separate layers.
-5. Sourceable: country-level local-norm overrides carry source and review notes.
-6. Conservative: never infer an individual's religion or personal preferences
-   from nationality. Country profiles are only workweek/calendar reference norms.
+The model follows two principles from the attached scheduling research:
 
-PUBLIC-HOLIDAY DATA
--------------------
-When the optional `holidays` package is installed, this module generates
-government-designated holidays locally by ISO country code and, where supported,
-subdivision. No live API call is required.
+1. User preferences should drive automated meeting ranking. Preferences can be
+   multi-dimensional (day, time, lunch, length, host, invitees, etc.), can carry
+   different weights, and can include minimum acceptance thresholds.
+2. Meeting duration and meeting objective matter, but the attached virtual-meeting
+   research mainly uses those variables to choose HOW to meet, not to prove a
+   universal best clock time. This model therefore uses duration when testing
+   whether a proposed slot crosses business/lunch/sleep/availability boundaries,
+   but does not invent a separate "long meeting time penalty."
+
+The user's supplied research synthesis also supports treating "mid-week /
+mid-morning" as a SOFT default rather than a universal rule, and treating local
+workweeks / holidays as structural calendar constraints.
+
+IMPORTANT
+---------
+- Explicit participant availability is the strongest direct input.
+- Country profiles are calendar/workweek reference norms, not assumptions about
+  an individual's religion or personal preferences.
+- Public holidays can be checked deterministically using the optional `holidays`
+  package.
+- Auspicious-date systems, religious observance, seasonal vacation patterns,
+  Ramadan hours, Ghost Month, rokuyo, zeri, muhurta, etc. are NOT automatically
+  scored unless a separate source-backed rule is explicitly added. They are too
+  context-specific to infer safely from nationality alone.
 
 Recommended dependency:
     holidays==0.104
@@ -43,7 +55,7 @@ except ImportError:
     HOLIDAYS_AVAILABLE = False
 
 
-SCORING_MODEL_VERSION = "2026.09-v2"
+SCORING_MODEL_VERSION = "2026.09-v3"
 DAY_MINUTES = 24 * 60
 
 
@@ -57,72 +69,98 @@ class ScoringPolicy:
     Participant-level composite.
 
     Default weights:
-        30% Explicit availability
+        35% Explicit participant availability
         20% Business-hours fit
-        20% Human convenience
-        15% Local norms / customary workweek
-        15% Public-holiday calendar
+        20% Human convenience / time-of-day
+         5% Day-of-workweek preference (soft)
+        10% Local workweek / scheduling norms
+        10% Public-holiday calendar
 
-    Severe conflicts also receive explicit caps after weighting.
+    Why a separate day-of-workweek component?
+    ------------------------------------------
+    The supplied research synthesis suggests Tue-Wed-Thu / middle-of-workweek
+    is a reasonable default, but the evidence is weaker than explicit user
+    availability. Therefore it receives only 5%.
+
+    The workweek-position logic is RELATIVE to the configured local workweek:
+      - first working day: slightly lower (catch-up / planning)
+      - middle working days: highest
+      - last working day: lower (end-of-week effect)
+    This means a Sunday-Thursday jurisdiction does not inherit a Monday-Friday
+    assumption.
+
+    Hard caps are applied after weighting for severe conflicts.
     """
 
+    # Generic reference workday. Country profiles can override.
     business_start: time = time(8, 0)
     business_end: time = time(17, 0)
 
+    # Human-convenience reference windows.
+    # Research synthesis: strongest generic default around 10:00-11:30,
+    # with 14:00-16:00 as a strong afternoon fallback.
     coffee_end: time = time(9, 0)
+    prime_morning_start: time = time(10, 0)
     lunch_start: time = time(11, 30)
     lunch_end: time = time(13, 30)
-    preferred_afternoon_end: time = time(16, 0)
+    prime_afternoon_start: time = time(14, 0)
+    prime_afternoon_end: time = time(16, 0)
+
+    # Sleep reference.
     sleep_start: time = time(0, 0)
     sleep_end: time = time(6, 0)
 
+    # Default corporate workweek where no sourced local profile exists.
     # Python weekday: Monday=0 ... Sunday=6.
     working_weekdays: Tuple[int, ...] = (0, 1, 2, 3, 4)
 
-    # Workweek-transition low-priority period.
-    # Mon-Fri profile => Fri 20:00 through Mon 09:00.
-    # Sun-Thu profile => Thu 20:00 through Sun 09:00.
+    # Low-priority transition surrounding the local weekend.
+    # Mon-Fri -> Fri 20:00 through Mon 09:00.
+    # Sun-Thu -> Thu 20:00 through Sun 09:00.
     weekend_transition_start: time = time(20, 0)
     weekend_transition_end: time = time(9, 0)
 
-    weight_availability: float = 0.30
+    # Component weights; must sum to 1.0.
+    weight_availability: float = 0.35
     weight_business_hours: float = 0.20
     weight_human_convenience: float = 0.20
-    weight_local_norms: float = 0.15
-    weight_holiday_calendar: float = 0.15
+    weight_day_of_week: float = 0.05
+    weight_local_norms: float = 0.10
+    weight_holiday_calendar: float = 0.10
 
+    # Hard caps after weighted scoring.
     cap_partial_availability: float = 75.0
     cap_outside_availability: float = 55.0
     cap_sleep_overlap: float = 30.0
     cap_local_nonwork_period: float = 45.0
     cap_public_holiday: float = 20.0
 
-    # Meeting-level aggregation remains compatible with the existing app.
-    aggregate_average_weight: float = 0.65
+    # Cross-participant aggregation.
+    # Added a small fairness term: it rewards more balanced inconvenience
+    # without overriding the worst-person safeguard.
+    aggregate_average_weight: float = 0.55
     aggregate_worst_weight: float = 0.35
-
-    # Available for future testing but intentionally 0 for now.
-    aggregate_fairness_weight: float = 0.00
+    aggregate_fairness_weight: float = 0.10
 
 
 DEFAULT_POLICY = ScoringPolicy()
 
 
 # =====================================================================
-# 2. LOCAL NORMS / "CULTURAL" REFERENCE PROFILES
+# 2. LOCAL NORMS / WORKWEEK PROFILES
 # =====================================================================
 
 @dataclass(frozen=True)
 class LocalNormsProfile:
     """
-    Country/jurisdiction scheduling reference.
+    Country / jurisdiction scheduling reference.
 
-    This is intentionally separate from a person's explicit availability.
+    This is NOT a claim about an individual person's beliefs or preferences.
 
     confidence:
         1.00 = strong general reference
-        <1.0 = narrower or sector-specific evidence; effect is blended toward
-               neutral to avoid over-generalizing.
+        <1.0 = narrower or sector-specific evidence; the score is blended back
+               toward neutral to avoid over-generalization.
     """
 
     working_weekdays: Tuple[int, ...]
@@ -138,25 +176,27 @@ class LocalNormsProfile:
     last_reviewed: str = ""
 
 
-# Keep these narrow, documented, and reviewable.
+# Only source-backed profiles should receive strong confidence.
 LOCAL_NORMS_PROFILES: Dict[str, LocalNormsProfile] = {
     "AE": LocalNormsProfile(
-        working_weekdays=(0, 1, 2, 3, 4),  # Mon-Fri
+        working_weekdays=(0, 1, 2, 3, 4),  # Mon-Fri reference
         confidence=1.0,
-        note="UAE government/semi-government Monday-Friday reference.",
+        note=(
+            "UAE government/semi-government Monday-Friday reference. "
+            "Individual employers may use different schedules."
+        ),
         source_url="https://u.ae/en/about-the-uae/fact-sheet",
         source_scope="government and semi-government reference",
         last_reviewed="2026-09-16",
     ),
     "SA": LocalNormsProfile(
-        working_weekdays=(6, 0, 1, 2, 3),  # Sun-Thu
+        working_weekdays=(6, 0, 1, 2, 3),  # Sun-Thu reference
         business_start=time(7, 30),
         business_end=time(14, 30),
         confidence=0.80,
         note=(
             "Saudi government reference: Sunday-Thursday working days. "
-            "Private-sector schedules can differ, so the profile is deliberately "
-            "below full confidence."
+            "Private-sector schedules may differ."
         ),
         source_url=(
             "https://www.hrsd.gov.sa/sites/default/files/2020-05/"
@@ -167,20 +207,11 @@ LOCAL_NORMS_PROFILES: Dict[str, LocalNormsProfile] = {
     ),
 }
 
-# Future sourced profile template:
-#
-# "XX": LocalNormsProfile(
-#     working_weekdays=(...),
-#     business_start=time(...),
-#     business_end=time(...),
-#     lunch_start=time(...),
-#     lunch_end=time(...),
-#     confidence=0.90,
-#     note="What this profile represents and what it does NOT claim.",
-#     source_url="...",
-#     source_scope="...",
-#     last_reviewed="YYYY-MM-DD",
-# )
+# The user's research notes identify several additional Middle Eastern calendars
+# as potentially Sunday-Thursday or otherwise non-Mon-Fri. These are deliberately
+# NOT activated automatically here until each rule is verified against a current,
+# jurisdiction-appropriate source. Add them as LocalNormsProfile entries once
+# verified.
 
 
 # =====================================================================
@@ -222,6 +253,7 @@ class ParticipantScoreBreakdown:
     availability_score: float
     business_hours_score: float
     human_convenience_score: float
+    day_of_week_score: float
     local_norms_score: float
     holiday_calendar_score: float
 
@@ -336,7 +368,10 @@ def _country_profile(
     return effective, profile, code
 
 
-def _subdivision_code(country_code: Optional[str], subdivision: Optional[str]) -> Optional[str]:
+def _subdivision_code(
+    country_code: Optional[str],
+    subdivision: Optional[str],
+) -> Optional[str]:
     if not country_code or not subdivision:
         return None
 
@@ -376,7 +411,7 @@ def _holiday_calendar(
 
 
 # =====================================================================
-# 6. COMPONENT 1 — USER-SELECTED AVAILABILITY (30%)
+# 6. COMPONENT 1 — USER-SELECTED AVAILABILITY (35%)
 # =====================================================================
 
 def _availability_component(
@@ -386,7 +421,12 @@ def _availability_component(
     latest: time,
 ) -> Tuple[float, float, List[str]]:
     pref_start, pref_end = _continuous_window(earliest, latest)
-    start, end = _continuous_meeting(local_start, local_end, pref_start, pref_end)
+    start, end = _continuous_meeting(
+        local_start,
+        local_end,
+        pref_start,
+        pref_end,
+    )
     duration = max(1, end - start)
 
     overlap = _overlap_minutes(start, end, pref_start, pref_end)
@@ -423,11 +463,18 @@ def _business_hours_component(
     business_start = minutes_of_day(policy.business_start)
     business_end = minutes_of_day(policy.business_end)
 
-    overlap = _overlap_minutes(start, end, business_start, business_end)
+    overlap = _overlap_minutes(
+        start,
+        end,
+        business_start,
+        business_end,
+    )
     ratio = _bounded_ratio(overlap, duration)
 
     if ratio >= 0.999:
-        return 100.0, ["Meeting is fully inside reference business hours."]
+        return 100.0, [
+            "Meeting is fully inside reference business hours."
+        ]
 
     if ratio > 0:
         return 45.0 + 45.0 * ratio, [
@@ -449,7 +496,7 @@ def _business_hours_component(
 
 
 # =====================================================================
-# 8. COMPONENT 3 — HUMAN CONVENIENCE (20%)
+# 8. COMPONENT 3 — HUMAN CONVENIENCE / TIME OF DAY (20%)
 # =====================================================================
 
 def _human_convenience_component(
@@ -458,13 +505,25 @@ def _human_convenience_component(
     policy: ScoringPolicy,
 ) -> Tuple[float, int, List[str]]:
     """
-    Convenience preferences:
-      - avoid first work hour when possible,
-      - prefer 09:00-11:30 and 13:30-16:00,
-      - reduce ranking across lunch,
-      - taper toward end of workday,
-      - treat 00:00-06:00 as sleep,
-      - prefer edges of sleep window over its middle.
+    Soft time-of-day default.
+
+    Highest generic convenience:
+      10:00-11:30
+      14:00-16:00
+
+    Still good:
+      09:00-10:00
+      13:30-14:00
+      16:00-17:00
+
+    Lower:
+      first work hour
+      lunch overlap
+      after-hours
+
+    Sleep:
+      00:00-06:00 is last-resort territory; if unavoidable, the edges
+      of the sleep window rank above the middle.
     """
     start = minutes_of_day(local_start.time())
     duration = _duration_minutes(local_start, local_end)
@@ -472,51 +531,98 @@ def _human_convenience_component(
 
     business_start = minutes_of_day(policy.business_start)
     coffee_end = minutes_of_day(policy.coffee_end)
+    prime_morning = minutes_of_day(policy.prime_morning_start)
     lunch_start = minutes_of_day(policy.lunch_start)
     lunch_end = minutes_of_day(policy.lunch_end)
-    afternoon_end = minutes_of_day(policy.preferred_afternoon_end)
+    prime_afternoon = minutes_of_day(policy.prime_afternoon_start)
+    afternoon_end = minutes_of_day(policy.prime_afternoon_end)
     business_end = minutes_of_day(policy.business_end)
     sleep_start = minutes_of_day(policy.sleep_start)
     sleep_end = minutes_of_day(policy.sleep_end)
 
-    sleep_overlap = _overlap_minutes(start, end, sleep_start, sleep_end)
+    sleep_overlap = _overlap_minutes(
+        start,
+        end,
+        sleep_start,
+        sleep_end,
+    )
 
     if sleep_overlap > 0:
         midpoint = (start + duration / 2) % DAY_MINUTES
-        edge_distance = min(abs(midpoint - sleep_start), abs(sleep_end - midpoint))
+        edge_distance = min(
+            abs(midpoint - sleep_start),
+            abs(sleep_end - midpoint),
+        )
         max_distance = max(1, (sleep_end - sleep_start) / 2)
-        edge_preference = 1.0 - _bounded_ratio(edge_distance, max_distance)
+        edge_preference = 1.0 - _bounded_ratio(
+            edge_distance,
+            max_distance,
+        )
         return 5.0 + 30.0 * edge_preference, sleep_overlap, [
-            f"Meeting overlaps sleep by {sleep_overlap} minutes; sleep-window edges "
-            "score better than the middle of the night."
+            f"Meeting overlaps sleep by {sleep_overlap} minutes; "
+            "sleep-window edges score better than the middle of the night."
         ]
 
-    if coffee_end <= start and end <= lunch_start:
-        return 100.0, 0, ["Inside preferred morning convenience window."]
+    # Prime morning.
+    if prime_morning <= start and end <= lunch_start:
+        return 100.0, 0, [
+            "Inside the preferred mid-morning reference window."
+        ]
 
-    if lunch_end <= start and end <= afternoon_end:
-        return 100.0, 0, ["Inside preferred afternoon convenience window."]
+    # Prime afternoon.
+    if prime_afternoon <= start and end <= afternoon_end:
+        return 98.0, 0, [
+            "Inside the preferred early-afternoon reference window."
+        ]
 
-    lunch_overlap = _overlap_minutes(start, end, lunch_start, lunch_end)
+    # Lunch overlap.
+    lunch_overlap = _overlap_minutes(
+        start,
+        end,
+        lunch_start,
+        lunch_end,
+    )
     if lunch_overlap > 0:
         lunch_ratio = _bounded_ratio(lunch_overlap, duration)
         return 82.0 - 22.0 * lunch_ratio, 0, [
             f"Meeting overlaps lunch by {lunch_overlap} minutes."
         ]
 
+    # First hour: ramp up from 84 to 90.
     if business_start <= start < coffee_end:
         progress = _bounded_ratio(
             start - business_start,
             max(1, coffee_end - business_start),
         )
-        return 82.0 + 12.0 * progress, 0, [
-            "Early workday; later starts score better to allow start-of-day routines."
+        return 84.0 + 6.0 * progress, 0, [
+            "First work hour; acceptable, but later starts score better."
         ]
 
+    # 09:00-10:00: strong but below the research-default peak.
+    if coffee_end <= start < prime_morning and end <= lunch_start:
+        progress = _bounded_ratio(
+            start - coffee_end,
+            max(1, prime_morning - coffee_end),
+        )
+        return 92.0 + 6.0 * progress, 0, [
+            "Morning meeting before the preferred mid-morning peak."
+        ]
+
+    # 13:30-14:00 ramp into prime afternoon.
+    if lunch_end <= start < prime_afternoon and end <= afternoon_end:
+        progress = _bounded_ratio(
+            start - lunch_end,
+            max(1, prime_afternoon - lunch_end),
+        )
+        return 92.0 + 6.0 * progress, 0, [
+            "Early afternoon immediately after the lunch window."
+        ]
+
+    # 16:00-17:00 tapers toward end of day.
     if start >= afternoon_end and end <= business_end:
         late = max(0, end - afternoon_end)
         span = max(1, business_end - afternoon_end)
-        return 94.0 - 12.0 * _bounded_ratio(late, span), 0, [
+        return 94.0 - 10.0 * _bounded_ratio(late, span), 0, [
             "Late workday; convenience declines toward end of day."
         ]
 
@@ -537,11 +643,74 @@ def _human_convenience_component(
             "Evening outside normal business hours."
         ]
 
-    return 75.0, 0, ["Neutral human-convenience period."]
+    return 75.0, 0, [
+        "Neutral human-convenience period."
+    ]
 
 
 # =====================================================================
-# 9. COMPONENT 4 — LOCAL NORMS / CULTURAL CALENDAR (15%)
+# 9. COMPONENT 4 — DAY OF WORKWEEK (5%, SOFT)
+# =====================================================================
+
+def _day_of_week_component(
+    local_start: datetime,
+    policy: ScoringPolicy,
+) -> Tuple[float, List[str]]:
+    """
+    Weak default only.
+
+    Instead of hard-coding Tuesday/Wednesday/Thursday, rank the POSITION
+    inside the local configured workweek:
+
+      first working day  -> 90
+      middle working day -> 100
+      last working day   -> 80
+      non-working day    -> 35
+
+    For Mon-Fri this maps to:
+      Mon 90, Tue-Wed-Thu 100, Fri 80.
+
+    For Sun-Thu this maps to:
+      Sun 90, Mon-Tue-Wed 100, Thu 80.
+    """
+    working = tuple(policy.working_weekdays)
+    wd = local_start.weekday()
+
+    if wd not in working:
+        return 35.0, [
+            "Proposed date is outside the configured local workweek."
+        ]
+
+    position = working.index(wd)
+
+    if len(working) == 1:
+        return 100.0, [
+            "Only configured working day."
+        ]
+
+    if position == 0:
+        return 90.0, [
+            "First working day of the local workweek; small catch-up/planning penalty."
+        ]
+
+    if position == len(working) - 1:
+        # Additional soft Friday-afternoon / end-of-workweek fade is handled here.
+        start_minute = minutes_of_day(local_start.time())
+        if start_minute >= 15 * 60:
+            return 65.0, [
+                "Last working day and late afternoon; stronger end-of-week penalty."
+            ]
+        return 80.0, [
+            "Last working day of the local workweek; soft end-of-week penalty."
+        ]
+
+    return 100.0, [
+        "Middle working day of the local workweek."
+    ]
+
+
+# =====================================================================
+# 10. COMPONENT 5 — LOCAL NORMS / WORKWEEK (10%)
 # =====================================================================
 
 def _low_priority_local_period(
@@ -549,16 +718,7 @@ def _low_priority_local_period(
     local_end: datetime,
     policy: ScoringPolicy,
 ) -> bool:
-    """
-    Derive low-priority weekend transition from the configured workweek.
-
-    Mon-Fri:
-        Fri 20:00 -> Mon 09:00
-
-    Sun-Thu:
-        Thu 20:00 -> Sun 09:00
-    """
-    working = tuple(sorted(set(policy.working_weekdays)))
+    working = tuple(policy.working_weekdays)
     if not working:
         return False
 
@@ -572,10 +732,16 @@ def _low_priority_local_period(
         if wd not in working:
             return True
 
-        if wd == last_workday and minute >= minutes_of_day(policy.weekend_transition_start):
+        if (
+            wd == last_workday
+            and minute >= minutes_of_day(policy.weekend_transition_start)
+        ):
             return True
 
-        if wd == first_workday and minute < minutes_of_day(policy.weekend_transition_end):
+        if (
+            wd == first_workday
+            and minute < minutes_of_day(policy.weekend_transition_end)
+        ):
             return True
 
         return False
@@ -598,17 +764,21 @@ def _local_norms_component(
     policy: ScoringPolicy,
     profile: Optional[LocalNormsProfile],
 ) -> Tuple[float, bool, List[str]]:
-    low_period = _low_priority_local_period(local_start, local_end, policy)
+    low_period = _low_priority_local_period(
+        local_start,
+        local_end,
+        policy,
+    )
 
     raw = 25.0 if low_period else 100.0
     confidence = profile.confidence if profile else 1.0
 
-    # Lower-confidence profiles are blended toward neutral.
+    # Lower-confidence country profiles are blended toward neutral.
     score = 100.0 - confidence * (100.0 - raw)
 
     if profile:
         profile_note = (
-            f"Local-norm profile ({profile.source_scope or 'country reference'}, "
+            f"Local workweek profile ({profile.source_scope or 'country reference'}, "
             f"confidence {profile.confidence:.0%}): {profile.note}"
         )
     else:
@@ -630,7 +800,7 @@ def _local_norms_component(
 
 
 # =====================================================================
-# 10. COMPONENT 5 — PUBLIC HOLIDAYS (15%)
+# 11. COMPONENT 6 — PUBLIC HOLIDAYS (10%)
 # =====================================================================
 
 def _holiday_component(
@@ -681,7 +851,7 @@ def _holiday_component(
 
 
 # =====================================================================
-# 11. PARTICIPANT COMPOSITE
+# 12. PARTICIPANT COMPOSITE
 # =====================================================================
 
 def score_local_detailed(
@@ -694,12 +864,16 @@ def score_local_detailed(
     subdivision: Optional[str] = None,
     policy: ScoringPolicy = DEFAULT_POLICY,
 ) -> ParticipantScoreBreakdown:
-    effective, profile, profile_key = _country_profile(country_code, policy)
+    effective, profile, profile_key = _country_profile(
+        country_code,
+        policy,
+    )
 
     weight_sum = (
         effective.weight_availability
         + effective.weight_business_hours
         + effective.weight_human_convenience
+        + effective.weight_day_of_week
         + effective.weight_local_norms
         + effective.weight_holiday_calendar
     )
@@ -709,25 +883,48 @@ def score_local_detailed(
         )
 
     availability, availability_ratio, notes_a = _availability_component(
-        local_start, local_end, earliest, latest
+        local_start,
+        local_end,
+        earliest,
+        latest,
     )
+
     business, notes_b = _business_hours_component(
-        local_start, local_end, effective
+        local_start,
+        local_end,
+        effective,
     )
+
     human, sleep_overlap, notes_h = _human_convenience_component(
-        local_start, local_end, effective
+        local_start,
+        local_end,
+        effective,
     )
+
+    day_score, notes_d = _day_of_week_component(
+        local_start,
+        effective,
+    )
+
     local_norms, low_local_period, notes_n = _local_norms_component(
-        local_start, local_end, effective, profile
+        local_start,
+        local_end,
+        effective,
+        profile,
     )
+
     holiday, holiday_hit, holiday_name, holiday_data, notes_c = _holiday_component(
-        local_start, local_end, country_code, subdivision
+        local_start,
+        local_end,
+        country_code,
+        subdivision,
     )
 
     weighted = (
         availability * effective.weight_availability
         + business * effective.weight_business_hours
         + human * effective.weight_human_convenience
+        + day_score * effective.weight_day_of_week
         + local_norms * effective.weight_local_norms
         + holiday * effective.weight_holiday_calendar
     )
@@ -736,26 +933,57 @@ def score_local_detailed(
     caps: Dict[str, float] = {}
 
     if 0 < availability_ratio < 1:
-        caps["partial_selected_availability"] = effective.cap_partial_availability
-        score = min(score, effective.cap_partial_availability)
+        caps["partial_selected_availability"] = (
+            effective.cap_partial_availability
+        )
+        score = min(
+            score,
+            effective.cap_partial_availability,
+        )
 
     if availability_ratio == 0:
-        caps["outside_selected_availability"] = effective.cap_outside_availability
-        score = min(score, effective.cap_outside_availability)
+        caps["outside_selected_availability"] = (
+            effective.cap_outside_availability
+        )
+        score = min(
+            score,
+            effective.cap_outside_availability,
+        )
 
     if sleep_overlap > 0:
         caps["sleep_overlap"] = effective.cap_sleep_overlap
-        score = min(score, effective.cap_sleep_overlap)
+        score = min(
+            score,
+            effective.cap_sleep_overlap,
+        )
 
-    if low_local_period:
-        caps["local_nonwork_period"] = effective.cap_local_nonwork_period
-        score = min(score, effective.cap_local_nonwork_period)
+    # Only apply a strong local-norm cap when the profile is generic or
+    # sufficiently confident. Lower-confidence jurisdiction profiles affect
+    # the weighted score but do not hard-cap the candidate.
+    local_cap_eligible = (
+        profile is None
+        or profile.confidence >= 0.80
+    )
+    if low_local_period and local_cap_eligible:
+        caps["local_nonwork_period"] = (
+            effective.cap_local_nonwork_period
+        )
+        score = min(
+            score,
+            effective.cap_local_nonwork_period,
+        )
 
     if holiday_hit:
         caps["public_holiday"] = effective.cap_public_holiday
-        score = min(score, effective.cap_public_holiday)
+        score = min(
+            score,
+            effective.cap_public_holiday,
+        )
 
-    score = round(max(0.0, min(100.0, score)), 1)
+    score = round(
+        max(0.0, min(100.0, score)),
+        1,
+    )
 
     if score >= 85:
         status = "Preferred"
@@ -770,11 +998,32 @@ def score_local_detailed(
     else:
         status = "Last resort"
 
-    notes = notes_a + notes_b + notes_h + notes_n + notes_c
+    notes = (
+        notes_a
+        + notes_b
+        + notes_h
+        + notes_d
+        + notes_n
+        + notes_c
+    )
+
+    # Attached virtual-meeting research indicates >1 hour can matter to meeting
+    # mode effectiveness. We report it as context but do not penalize clock-time
+    # ranking without a meeting-mode / meeting-objective input.
+    if _duration_minutes(local_start, local_end) > 60:
+        notes.append(
+            "Meeting is longer than 60 minutes. Duration may matter for virtual "
+            "meeting mode effectiveness, but no extra timing penalty is applied "
+            "without a meeting-mode/objective input."
+        )
+
     if caps:
         notes.append(
             "Applied cap(s): "
-            + ", ".join(f"{name} <= {value:g}" for name, value in caps.items())
+            + ", ".join(
+                f"{name} <= {value:g}"
+                for name, value in caps.items()
+            )
         )
 
     return ParticipantScoreBreakdown(
@@ -783,6 +1032,7 @@ def score_local_detailed(
         availability_score=round(availability, 1),
         business_hours_score=round(business, 1),
         human_convenience_score=round(human, 1),
+        day_of_week_score=round(day_score, 1),
         local_norms_score=round(local_norms, 1),
         holiday_calendar_score=round(holiday, 1),
         weighted_before_caps=round(weighted, 1),
@@ -791,8 +1041,15 @@ def score_local_detailed(
         country_code=country_code,
         subdivision=subdivision,
         local_norms_profile_used=profile_key,
-        local_norms_confidence=profile.confidence if profile else 1.0,
-        selected_availability_overlap_ratio=round(availability_ratio, 4),
+        local_norms_confidence=(
+            profile.confidence
+            if profile
+            else 1.0
+        ),
+        selected_availability_overlap_ratio=round(
+            availability_ratio,
+            4,
+        ),
         sleep_overlap_minutes=int(sleep_overlap),
         low_priority_local_period=low_local_period,
         holiday_detected=holiday_hit,
@@ -824,7 +1081,7 @@ def score_local(
 
 
 # =====================================================================
-# 12. MEETING-LEVEL COMPOSITE
+# 13. MEETING-LEVEL COMPOSITE
 # =====================================================================
 
 def aggregate_meeting_score(
@@ -834,14 +1091,21 @@ def aggregate_meeting_score(
 ) -> MeetingScoreBreakdown:
     scores = [float(s) for s in participant_scores]
     if not scores:
-        raise ValueError("At least one participant score is required.")
+        raise ValueError(
+            "At least one participant score is required."
+        )
 
     avg = mean(scores)
     worst = min(scores)
     best = max(scores)
 
-    # Useful future metric: balanced burden across participants.
-    fairness = max(0.0, 100.0 - (best - worst))
+    # Snapshot fairness: a smaller spread means inconvenience is more balanced.
+    # This is NOT historical rotation fairness; rotation would require storing
+    # past meeting burden by participant / region.
+    fairness = max(
+        0.0,
+        100.0 - (best - worst),
+    )
 
     total_weight = (
         policy.aggregate_average_weight
@@ -849,7 +1113,9 @@ def aggregate_meeting_score(
         + policy.aggregate_fairness_weight
     )
     if total_weight <= 0:
-        raise ValueError("Meeting aggregation weights must sum to > 0.")
+        raise ValueError(
+            "Meeting aggregation weights must sum to > 0."
+        )
 
     overall = (
         avg * policy.aggregate_average_weight
@@ -862,34 +1128,40 @@ def aggregate_meeting_score(
         average_participant_score=round(avg, 1),
         worst_participant_score=round(worst, 1),
         fairness_score=round(fairness, 1),
-        participant_scores=[round(s, 1) for s in scores],
+        participant_scores=[
+            round(s, 1)
+            for s in scores
+        ],
     )
 
 
 # =====================================================================
-# 13. UI / README DESCRIPTION
+# 14. UI / README DESCRIPTION
 # =====================================================================
 
 def scoring_methodology_summary() -> str:
     holiday_text = (
-        "Public holidays are included from the installed country/subdivision holiday calendar."
+        "Public holidays are checked from the installed country/subdivision holiday calendar."
         if HOLIDAYS_AVAILABLE
         else "Public-holiday scoring is neutral until the optional holidays package is installed."
     )
 
     return (
         f"Composite scoring model {SCORING_MODEL_VERSION}: "
-        "30% selected availability, 20% business-hours fit, 20% human convenience, "
-        "15% local workweek/norms, and 15% public-holiday calendar. "
-        "Hard caps apply to meetings outside availability, during sleep, in configured "
-        "non-working periods, or on public holidays. "
-        "Overall meeting ranking = 65% participant average + 35% lowest participant score. "
+        "35% selected availability, 20% business-hours fit, 20% human convenience, "
+        "5% day-of-workweek preference, 10% local workweek/norms, and 10% public holidays. "
+        "The time-of-day default softly favors mid-morning and early afternoon; "
+        "the day-of-week default softly favors the middle of the LOCAL workweek. "
+        "Hard caps apply to meetings outside availability, during sleep, in strongly "
+        "supported non-working periods, or on public holidays. "
+        "Overall ranking = 55% participant average + 35% lowest participant "
+        "+ 10% snapshot fairness. "
         + holiday_text
     )
 
 
 # =====================================================================
-# 14. SELF-REVIEW
+# 15. SELF-REVIEW
 # =====================================================================
 
 if __name__ == "__main__":
@@ -909,6 +1181,7 @@ if __name__ == "__main__":
     print("Availability:", example.availability_score)
     print("Business hours:", example.business_hours_score)
     print("Human convenience:", example.human_convenience_score)
+    print("Day of workweek:", example.day_of_week_score)
     print("Local norms:", example.local_norms_score)
     print("Holiday calendar:", example.holiday_calendar_score)
     print("Before caps:", example.weighted_before_caps)
