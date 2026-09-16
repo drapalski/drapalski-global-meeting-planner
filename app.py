@@ -243,18 +243,75 @@ st.markdown(
             max-width: 7.2rem !important;
         }
 
-        .joining-help {
-            font-size: 0.70rem;
-            line-height: 1.35;
-            color: #74777c;
-            padding: 0.42rem 0.70rem 0.34rem 0.70rem;
-            margin: 0.05rem 0 0.12rem 0;
+        .participant-intro-box {
+            background:#fdebf7;
+            border:1px solid #f4cde5;
+            border-left:4px solid #ff66c4;
+            border-radius:8px;
+            padding:0.72rem 0.90rem;
+            margin-top:0.25rem;
+            margin-bottom:0.65rem;
+        }
+
+        .participant-intro-grid {
+            display:grid;
+            grid-template-columns:minmax(190px, 0.85fr) minmax(0, 2.4fr);
+            gap:1.10rem;
+            align-items:start;
+        }
+
+        .participant-intro-title {
+            font-size:1.35rem;
+            font-weight:700;
+            line-height:1.15;
+            color:#202226;
+            padding-top:0.05rem;
+        }
+
+        .participant-intro-copy {
+            font-size:0.72rem;
+            line-height:1.45;
+            color:#62656b;
+        }
+
+        .mobile-field-label {
+            display:none;
         }
 
         @media (max-width: 700px) {
-            .best-times-methodology-grid {
+            .best-times-methodology-grid,
+            .participant-intro-grid {
                 grid-template-columns: 1fr !important;
                 gap:0.35rem !important;
+            }
+
+            /* Desktop shared headers disappear on mobile; each stacked input gets
+               its own compact label immediately above the control instead. */
+            .participant-header {
+                display:none !important;
+            }
+
+            .mobile-field-label {
+                display:block !important;
+                font-size:0.66rem !important;
+                line-height:1.15 !important;
+                font-weight:650 !important;
+                color:#6f7177 !important;
+                margin:0.22rem 0 0.18rem 0.18rem !important;
+                padding:0 !important;
+            }
+
+            .participant-intro-box {
+                padding:0.62rem 0.72rem !important;
+                margin-bottom:0.50rem !important;
+            }
+
+            .participant-intro-title {
+                font-size:1.18rem !important;
+            }
+
+            .participant-intro-copy {
+                font-size:0.70rem !important;
             }
         }
 
@@ -2015,23 +2072,22 @@ with st.sidebar:
 # ---------- Participant editor ----------
 
 
-joining_title_col, joining_help_col = st.columns([1.0, 2.8], gap="small")
-
-with joining_title_col:
-    st.subheader("Who’s joining?")
-
-with joining_help_col:
-    st.markdown(
-        """
-        <div class="joining-help">
-            Add the people or teams joining the meeting and choose their country or area.
-            For U.S. participants, choose the state too. Working hours default to 08:00–17:00
-            local time. Use the override fields only when a participant is available outside
-            those hours; the selected window directly drives the ranking and green availability.
+st.markdown(
+    """
+    <div class="participant-intro-box">
+        <div class="participant-intro-grid">
+            <div class="participant-intro-title">Who’s joining?</div>
+            <div class="participant-intro-copy">
+                Add the people or teams joining the meeting and choose their country or area.
+                For U.S. participants, choose the state too. Working hours default to 08:00–17:00
+                local time. Use the override fields only when a participant is available outside
+                those hours; the selected window directly drives the ranking and green availability.
+            </div>
         </div>
-        """,
-        unsafe_allow_html=True,
-    )
+    </div>
+    """,
+    unsafe_allow_html=True,
+)
 
 people = st.session_state.people_v2
 
@@ -2098,6 +2154,7 @@ for index, person in enumerate(list(people)):
         c1, c2, c3, c4, c5 = st.columns([1.00, 1.15, 1.80, 0.72, 0.72])
 
         with c1:
+            st.markdown('<div class="mobile-field-label">Name</div>', unsafe_allow_html=True)
             person["name"] = st.text_input(
                 "Name",
                 value=person["name"],
@@ -2106,6 +2163,7 @@ for index, person in enumerate(list(people)):
             )
 
         with c2:
+            st.markdown('<div class="mobile-field-label">Country / area</div>', unsafe_allow_html=True)
             current_country = infer_country_code(person)
             selected_country = st.selectbox(
                 "Country / area",
@@ -2121,6 +2179,7 @@ for index, person in enumerate(list(people)):
 
             if selected_country == "US":
                 current_state = infer_us_state(person)
+                st.markdown('<div class="mobile-field-label">State</div>', unsafe_allow_html=True)
                 person["state"] = st.selectbox(
                     "State",
                     options=US_STATES,
@@ -2133,6 +2192,7 @@ for index, person in enumerate(list(people)):
                 person["state"] = ""
 
         with c3:
+            st.markdown('<div class="mobile-field-label">Time zone</div>', unsafe_allow_html=True)
             if selected_country == "US":
                 zone_options = [
                     z for z in US_STATE_ZONES.get(person["state"], ["America/New_York"])
@@ -2167,6 +2227,7 @@ for index, person in enumerate(list(people)):
                 )
 
         with c4:
+            st.markdown('<div class="mobile-field-label">Override from</div>', unsafe_allow_html=True)
             person["earliest"] = st.time_input(
                 "Available from",
                 value=person["earliest"],
@@ -2177,6 +2238,7 @@ for index, person in enumerate(list(people)):
             )
 
         with c5:
+            st.markdown('<div class="mobile-field-label">Override until</div>', unsafe_allow_html=True)
             person["latest"] = st.time_input(
                 "Available until",
                 value=person["latest"],
