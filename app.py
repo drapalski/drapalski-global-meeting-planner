@@ -176,8 +176,8 @@ st.markdown(
 
             section[data-testid="stSidebar"],
             section[data-testid="stSidebar"] > div {
-                width: 205px !important;
-                min-width: 205px !important;
+                width: 220px !important;
+                min-width: 220px !important;
             }
 
             .dc-subtitle {
@@ -195,13 +195,13 @@ st.markdown(
         section[data-testid="stSidebar"] {
             background: linear-gradient(180deg, #fffafd 0%, #f8f2f6 100%);
             border-right: 1px solid var(--dc-border);
-            width: 218px !important;
-            min-width: 218px !important;
+            width: 238px !important;
+            min-width: 238px !important;
         }
 
         section[data-testid="stSidebar"] > div {
-            width: 218px !important;
-            min-width: 218px !important;
+            width: 238px !important;
+            min-width: 238px !important;
         }
 
         section[data-testid="stSidebar"] [data-testid="stSidebarUserContent"] {
@@ -227,6 +227,22 @@ st.markdown(
             border-radius: 10px !important;
             border-color: var(--dc-border) !important;
             background: #ffffff;
+        }
+
+        /* Slightly tighter card interiors, especially in the participant editor. */
+        div[data-testid="stVerticalBlockBorderWrapper"] > div {
+            padding-top: 0.38rem !important;
+            padding-bottom: 0.38rem !important;
+            padding-left: 0.48rem !important;
+            padding-right: 0.48rem !important;
+        }
+
+        .joining-help {
+            font-size: 8px;
+            line-height: 1.35;
+            color: #74777c;
+            padding: 0.40rem 0.70rem 0.32rem 0.70rem;
+            margin: 0.05rem 0 0.12rem 0;
         }
 
         section[data-testid="stSidebar"] hr {
@@ -1517,6 +1533,7 @@ def reset_defaults():
     st.session_state.meeting_date = DEFAULT_MEETING_DATE
     st.session_state.duration_minutes = DEFAULT_DURATION_MINUTES
     st.session_state.start_interval_minutes = DEFAULT_START_INTERVAL_MINUTES
+    st.session_state.search_horizon_days = 7
 
 
 # ---------- Session state ----------
@@ -1532,6 +1549,9 @@ if "duration_minutes" not in st.session_state:
 
 if "start_interval_minutes" not in st.session_state:
     st.session_state.start_interval_minutes = DEFAULT_START_INTERVAL_MINUTES
+
+if "search_horizon_days" not in st.session_state:
+    st.session_state.search_horizon_days = 7
 
 
 # ---------- Meeting settings ----------
@@ -1555,7 +1575,7 @@ with st.sidebar:
             Meeting setup
         </div>
         <div style="font-size:0.82rem;line-height:1.38;color:#5e646d;margin-bottom:0.45rem;">
-            Choose the meeting length and who is joining. The planner automatically searches the next 7 days and handles time-zone changes.
+            Choose the meeting length, search window, and who is joining. Time-zone changes are handled automatically.
         </div>
         """,
         unsafe_allow_html=True,
@@ -1627,8 +1647,17 @@ with st.sidebar:
         help="Choose how long the meeting should be.",
     )
 
+    search_horizon_days = st.selectbox(
+        "Find the best time within",
+        options=[2, 7],
+        key="search_horizon_days",
+        format_func=lambda days: f"Next {days} days",
+        help="Choose how far ahead the planner should search for the highest-priority meeting times.",
+    )
+
     st.caption(
-        "No date selection needed. The planner searches the next 7 days from now and ranks the highest-priority options."
+        f"No date selection needed. The planner searches the next {search_horizon_days} days from now "
+        "and ranks the highest-priority options."
     )
 
     with st.expander("Advanced settings", expanded=False):
@@ -1692,16 +1721,21 @@ with st.sidebar:
 # ---------- Participant editor ----------
 
 
-joining_title_col, joining_help_col = st.columns([1.0, 2.6])
+joining_title_col, joining_help_col = st.columns([1.0, 2.8], gap="small")
 
 with joining_title_col:
     st.subheader("Who’s joining?")
 
 with joining_help_col:
-    st.caption(
-        "Add the people or teams joining the meeting and choose their country or area. "
-        "For U.S. participants, choose the state too. Availability defaults to 08:00–17:00 local time "
-        "and directly drives the meeting ranking and green availability shown below."
+    st.markdown(
+        """
+        <div class="joining-help">
+            Add the people or teams joining the meeting and choose their country or area.
+            For U.S. participants, choose the state too. Availability defaults to 08:00–17:00
+            local time and directly drives the meeting ranking and green availability shown below.
+        </div>
+        """,
+        unsafe_allow_html=True,
     )
 
 people = st.session_state.people_v2
@@ -2273,8 +2307,8 @@ if minute_remainder:
 anchor_utc = now_utc
 candidate_rows = []
 
-# Search the next 7 days automatically and rank the best options.
-SEARCH_HORIZON_DAYS = 7
+# Search the user-selected horizon automatically and rank the best options.
+SEARCH_HORIZON_DAYS = int(search_horizon_days)
 steps = int((SEARCH_HORIZON_DAYS * 24 * 60) / interval)
 
 for step in range(steps):
@@ -2324,8 +2358,8 @@ for step in range(steps):
     candidate_rows.append(row)
 
 results = pd.DataFrame(candidate_rows).sort_values(
-    ["Overall score", "Preferred count", "Average score"],
-    ascending=[False, False, False],
+    ["Overall score", "Preferred count", "Average score", "UTC"],
+    ascending=[False, False, False, True],
 ).reset_index(drop=True)
 
 
@@ -2360,6 +2394,66 @@ for rank, (_, row) in enumerate(results.head(top_n).iterrows(), start=1):
                     f"{p['location']} · {local.tzname()} · "
                     f"{utc_offset_label(p['tz_name'], local.date())} · {status}"
                 )
+
+
+# ---------- Email-ready proposal ----------
+
+with st.expander("Email-ready proposal · top 3", expanded=False):
+    proposal_lines = [
+        "Looking at the times, I would propose the following three options:",
+        "",
+        (
+            "Times are listed first in your local time zone: "
+            f"{friendly_zone_name(browser_timezone)} "
+            f"({utc_offset_label(browser_timezone, datetime.now(ZoneInfo(browser_timezone)).date())})."
+        ),
+        "",
+    ]
+
+    for proposal_rank, (_, proposal_row) in enumerate(results.head(3).iterrows(), start=1):
+        proposal_utc = proposal_row["UTC"]
+        if hasattr(proposal_utc, "to_pydatetime"):
+            proposal_utc = proposal_utc.to_pydatetime()
+
+        user_local = proposal_utc.astimezone(ZoneInfo(browser_timezone))
+        proposal_lines.append(
+            f"{proposal_rank}. {user_local.strftime('%a %d %b %Y at %H:%M')}"
+        )
+
+        participant_details = []
+        for p in people:
+            participant_local = proposal_row[p["id"]]
+            if hasattr(participant_local, "to_pydatetime"):
+                participant_local = participant_local.to_pydatetime()
+
+            region_text = un_region_label(p.get("country_code", ""))
+            zone_text = friendly_zone_name(p["tz_name"])
+            offset_text = utc_offset_label(p["tz_name"], participant_local.date())
+
+            if p.get("country_code") == "US" and p.get("state"):
+                place_text = f"{p['state']}, {COUNTRY_NAMES.get('US', 'United States')}"
+            else:
+                place_text = COUNTRY_NAMES.get(
+                    p.get("country_code", ""),
+                    p.get("location", ""),
+                )
+
+            participant_details.append(
+                f"{p['name']}: {participant_local.strftime('%a %H:%M')} "
+                f"· {zone_text} {offset_text} · {place_text} / {region_text}"
+            )
+
+        proposal_lines.append("   (" + "; ".join(participant_details) + ")")
+        proposal_lines.append("")
+
+    proposal_lines.append("Please let me know which option works best.")
+
+    email_proposal_text = "\n".join(proposal_lines)
+
+    st.caption(
+        "Use the copy icon in the top-right corner of the text box to copy this directly into an email."
+    )
+    st.code(email_proposal_text, language="text", wrap_lines=True)
 
 
 # ---------- UTC timeline ----------
