@@ -1112,8 +1112,8 @@ PARTICIPANT_COLORS = [
 ]
 
 STATUS_COLORS = {
-    "Business hours": "#A8C9AE",
-    "Shoulder hours": "#8F3548",
+    "Available": "#A8C9AE",
+    "Outside availability": "#8F3548",
     "Sleep hours": "#E8B47A",
 }
 
@@ -1157,48 +1157,72 @@ def participant_color(index: int) -> str:
     return PARTICIPANT_COLORS[index % len(PARTICIPANT_COLORS)]
 
 
-def local_status(local_dt: datetime):
-    """Map-status convention: green 09–17, orange 00–06, pink otherwise."""
+def _time_in_window(local_t: time, start_t: time, end_t: time) -> bool:
+    """Return True when local_t falls inside the selected availability window."""
+    current = minutes_of_day(local_t)
+    start = minutes_of_day(start_t)
+    end = minutes_of_day(end_t)
+
+    if start == end:
+        return True
+    if start < end:
+        return start <= current < end
+    # Supports an overnight availability window, e.g. 22:00–06:00.
+    return current >= start or current < end
+
+
+def local_status(person: dict, local_dt: datetime):
+    """
+    Map-status convention.
+
+    Green means the participant is inside the availability window they selected.
+    Outside that window, 00:00–06:00 is shown as sleep time and all other hours
+    are shown as outside availability.
+    """
+    if _time_in_window(local_dt.time(), person["earliest"], person["latest"]):
+        return "Available", STATUS_COLORS["Available"]
+
     local_hour = local_dt.hour + local_dt.minute / 60
-    if 9 <= local_hour < 17:
-        return "Business hours", STATUS_COLORS["Business hours"]
     if 0 <= local_hour < 6:
         return "Sleep hours", STATUS_COLORS["Sleep hours"]
-    return "Shoulder hours", STATUS_COLORS["Shoulder hours"]
+
+    return "Outside availability", STATUS_COLORS["Outside availability"]
 
 
 def local_clock_segments_utc(person: dict, ref_date: date):
-    """Map a person's local business/sleep/other windows onto one UTC day."""
+    """
+    Build a 24-hour UTC status band for one participant.
+
+    The participant's selected availability overrides the generic day context.
+    Outside that window, 00:00–06:00 local is sleep and remaining hours are
+    outside availability.
+    """
     tz = ZoneInfo(person["tz_name"])
     utc_anchor = datetime.combine(ref_date, time(0, 0), tzinfo=ZoneInfo("UTC"))
 
-    local_windows = [
-        ("Sleep hours", time(0, 0), time(6, 0), 0),
-        ("Shoulder hours", time(6, 0), time(9, 0), 0),
-        ("Business hours", time(9, 0), time(17, 0), 0),
-        ("Shoulder hours", time(17, 0), time(0, 0), 1),
-    ]
-
+    # Build 15-minute local segments so user-entered quarter-hour availability
+    # boundaries are represented accurately and DST is handled by ZoneInfo.
     output = []
-    for label, start_t, end_t, end_day_offset in local_windows:
-        local_start = datetime.combine(ref_date, start_t, tzinfo=tz)
-        local_end = datetime.combine(
-            ref_date + timedelta(days=end_day_offset),
-            end_t,
-            tzinfo=tz,
-        )
+    step = timedelta(minutes=15)
+    start_local = datetime.combine(ref_date, time(0, 0), tzinfo=tz)
 
-        utc_start = local_start.astimezone(ZoneInfo("UTC"))
-        utc_end = local_end.astimezone(ZoneInfo("UTC"))
-        duration_h = (utc_end - utc_start).total_seconds() / 3600
-        start_h = ((utc_start - utc_anchor).total_seconds() / 3600) % 24
-        finish_h = start_h + duration_h
+    raw = []
+    for i in range(96):
+        local_dt = start_local + i * step
+        label, _ = local_status(person, local_dt)
+        utc_dt = local_dt.astimezone(ZoneInfo("UTC"))
+        start_h = ((utc_dt - utc_anchor).total_seconds() / 3600) % 24
+        raw.append((label, start_h, 0.25))
 
-        if finish_h <= 24:
-            output.append((label, start_h, duration_h))
-        else:
-            output.append((label, start_h, 24 - start_h))
-            output.append((label, 0, finish_h - 24))
+    # Merge adjacent UTC segments with the same label where possible.
+    for label, start_h, width_h in raw:
+        if output:
+            prev_label, prev_start, prev_width = output[-1]
+            expected = (prev_start + prev_width) % 24
+            if prev_label == label and abs(expected - start_h) < 1e-9 and prev_start + prev_width <= 24:
+                output[-1] = (prev_label, prev_start, prev_width + width_h)
+                continue
+        output.append((label, start_h, width_h))
 
     return output
 
@@ -1311,8 +1335,8 @@ def default_people():
             "location": "Germany",
             "country_code": "DE",
             "tz_name": "Europe/Berlin",
-            "earliest": time(7, 0),
-            "latest": time(23, 0),
+            "earliest": time(8, 0),
+            "latest": time(17, 0),
         },
         {
             "id": new_id(),
@@ -1321,7 +1345,7 @@ def default_people():
             "country_code": "US",
             "state": "Oregon",
             "tz_name": "America/Los_Angeles",
-            "earliest": time(9, 0),
+            "earliest": time(8, 0),
             "latest": time(17, 0),
         },
         {
@@ -1331,7 +1355,7 @@ def default_people():
             "country_code": "TW",
             "tz_name": "Asia/Taipei",
             "earliest": time(8, 0),
-            "latest": time(18, 0),
+            "latest": time(17, 0),
         },
     ]
 
@@ -1586,7 +1610,8 @@ with st.sidebar:
 st.subheader("Who’s joining?")
 st.write(
     "Add the people or teams joining the meeting and choose their country or area. "
-    "For U.S. participants, choose the state too. The correct time-zone choices update automatically."
+    "For U.S. participants, choose the state too. Availability defaults to 08:00–17:00 local time "
+    "and directly drives the meeting ranking and green availability shown below."
 )
 
 people = st.session_state.people_v2
@@ -1677,6 +1702,7 @@ for index, person in enumerate(list(people)):
                 value=person["earliest"],
                 step=900,
                 key=f"earliest_{pid}",
+                help="This person's selected availability. It overrides the default 08:00–17:00 business-hours assumption.",
             )
 
         with c5:
@@ -1685,6 +1711,7 @@ for index, person in enumerate(list(people)):
                 value=person["latest"],
                 step=900,
                 key=f"latest_{pid}",
+                help="The planner treats meetings inside this person's selected availability as preferred.",
             )
 
         country_code = person.get("country_code", "")
@@ -1714,7 +1741,7 @@ with add_col:
                 "country_code": "DE" if "DE" in COUNTRY_NAMES else COUNTRY_CODES[0],
                 "state": "",
                 "tz_name": "Europe/Berlin" if "Europe/Berlin" in ALL_ZONES else "UTC",
-                "earliest": time(9, 0),
+                "earliest": time(8, 0),
                 "latest": time(17, 0),
             }
         )
@@ -1816,13 +1843,13 @@ control_col, reference_col = st.columns([1.15, 1.85])
 
 with control_col:
     map_hour = st.slider(
-        "Explore a local hour",
+        "Reference time",
         min_value=0,
         max_value=23,
         value=12,
         step=1,
         format="%d:00",
-        help="Choose an hour in the reference time zone. The app converts it to UTC automatically.",
+        help="Choose a clock time in the reference time zone shown to the right. The app converts that instant to every participant’s local time.",
     )
 
 with reference_col:
@@ -1850,14 +1877,14 @@ map_reference_utc = reference_local.astimezone(ZoneInfo("UTC"))
 st.markdown(
     f"""
     <div style="font-size:0.78rem;line-height:1.45;color:#62656b;margin-top:-0.20rem;margin-bottom:0.15rem;">
-        <strong>Reference:</strong>
-        {friendly_zone_name(reference_tz)} · {reference_local.strftime('%H:%M')} local ·
-        {map_reference_utc.strftime('%H:%M')} UTC
-        {" · detected from your browser" if reference_tz == browser_timezone else " · manually selected"}
+        <strong>Time shown:</strong>
+        {reference_local.strftime('%H:%M')} in {friendly_zone_name(reference_tz)}
+        {" · your browser time zone" if reference_tz == browser_timezone else " · selected reference zone"}
+        · {map_reference_utc.strftime('%H:%M')} UTC
         &nbsp;&nbsp;&nbsp;
-        <span style="color:#4f9b63;font-weight:700;">● Green</span> 09–17 local &nbsp;&nbsp;
-        <span style="color:#cd549e;font-weight:700;">● Pink</span> 06–09 / 17–24 &nbsp;&nbsp;
-        <span style="color:#e59a45;font-weight:700;">● Orange</span> 00–06
+        <span style="color:#4f9b63;font-weight:700;">● Green</span> inside that person's selected availability &nbsp;&nbsp;
+        <span style="color:#cd549e;font-weight:700;">● Pink</span> awake but outside availability &nbsp;&nbsp;
+        <span style="color:#e59a45;font-weight:700;">● Orange</span> 00–06 local
     </div>
     """,
     unsafe_allow_html=True,
@@ -1867,7 +1894,7 @@ world_fig = go.Figure()
 
 for p in people:
     local_dt = map_reference_utc.astimezone(ZoneInfo(p["tz_name"]))
-    status_label, status_color = local_status(local_dt)
+    status_label, status_color = local_status(p, local_dt)
 
     center_lon = utc_offset_hours(p["tz_name"], meeting_date) * 15
     while center_lon > 180:
@@ -1905,8 +1932,8 @@ for p in people:
     )
 
 for status_label, display_name in [
-    ("Business hours", "Business · 09–17"),
-    ("Shoulder hours", "Other awake · 06–09 / 17–24"),
+    ("Available", "Inside selected availability"),
+    ("Outside availability", "Awake outside availability"),
     ("Sleep hours", "Sleep · 00–06"),
 ]:
     world_fig.add_trace(
@@ -1955,7 +1982,7 @@ st.plotly_chart(
     config={"displayModeBar": False, "responsive": True},
 )
 
-st.markdown("#### Local-day status bands · UTC")
+st.markdown("#### Availability across the day · UTC")
 
 band_fig = go.Figure()
 legend_seen = set()
@@ -2028,10 +2055,11 @@ st.plotly_chart(
 )
 
 st.caption(
-    "The selected hour is interpreted in the reference time zone above, then converted through UTC "
-    "to each participant’s local time. Equal Earth projection. Green = 09:00–17:00 local; "
-    "orange = 00:00–06:00 local; pink = remaining hours. "
-    "Map bands are scheduling guides, not legal timezone borders."
+    "The reference time above is converted through UTC to each participant’s local time. "
+    "Green uses each participant’s own Available from / Available until settings and is what the "
+    "meeting-ranking calculation prefers. Outside that selected availability, orange marks 00:00–06:00 "
+    "local sleep hours and pink marks other awake hours. The default availability for new participants "
+    "is 08:00–17:00 local. Map bands are scheduling guides, not legal timezone borders."
 )
 
 
