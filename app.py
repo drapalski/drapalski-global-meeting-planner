@@ -1791,33 +1791,76 @@ with st.expander("Time-zone details", expanded=False):
 
 st.subheader("World time view")
 
-control_col, legend_col = st.columns([1.3, 2.7])
+# Use the visitor's browser/computer time zone as the default reference.
+# Streamlit exposes this directly through st.context.timezone.
+try:
+    browser_timezone = st.context.timezone
+except Exception:
+    browser_timezone = None
+
+if not browser_timezone or browser_timezone not in ALL_ZONES:
+    browser_timezone = "UTC"
+
+reference_zone_options = []
+for zone_name in [browser_timezone, *FAVORITE_ZONES, *ALL_ZONES]:
+    if zone_name in ALL_ZONES and zone_name not in reference_zone_options:
+        reference_zone_options.append(zone_name)
+
+if (
+    "map_reference_tz" not in st.session_state
+    or st.session_state.map_reference_tz not in reference_zone_options
+):
+    st.session_state.map_reference_tz = browser_timezone
+
+control_col, reference_col = st.columns([1.15, 1.85])
+
 with control_col:
     map_hour = st.slider(
-        "Explore a UTC hour",
+        "Explore a local hour",
         min_value=0,
         max_value=23,
         value=12,
         step=1,
         format="%d:00",
-        help="Participant map colors are based on local time at this UTC hour.",
-    )
-with legend_col:
-    st.markdown(
-        """
-        <div style="font-size:0.78rem;line-height:1.45;margin-top:1.55rem;color:#62656b;">
-            <span style="color:#4f9b63;font-weight:700;">● Green</span> 09–17 local &nbsp;&nbsp;
-            <span style="color:#cd549e;font-weight:700;">● Pink</span> 06–09 / 17–24 &nbsp;&nbsp;
-            <span style="color:#e59a45;font-weight:700;">● Orange</span> 00–06
-        </div>
-        """,
-        unsafe_allow_html=True,
+        help="Choose an hour in the reference time zone. The app converts it to UTC automatically.",
     )
 
-map_reference_utc = datetime.combine(
+with reference_col:
+    reference_tz = st.selectbox(
+        "Reference time zone",
+        options=reference_zone_options,
+        key="map_reference_tz",
+        format_func=lambda z: (
+            f"{friendly_zone_name(z)} · {utc_offset_label(z, meeting_date)}"
+            + (" · your browser" if z == browser_timezone else "")
+        ),
+        help=(
+            "Defaults to the time zone reported by your browser/computer. "
+            "You can override it here if needed."
+        ),
+    )
+
+reference_local = datetime.combine(
     meeting_date,
     time(map_hour, 0),
-    tzinfo=ZoneInfo("UTC"),
+    tzinfo=ZoneInfo(reference_tz),
+)
+map_reference_utc = reference_local.astimezone(ZoneInfo("UTC"))
+
+st.markdown(
+    f"""
+    <div style="font-size:0.78rem;line-height:1.45;color:#62656b;margin-top:-0.20rem;margin-bottom:0.15rem;">
+        <strong>Reference:</strong>
+        {friendly_zone_name(reference_tz)} · {reference_local.strftime('%H:%M')} local ·
+        {map_reference_utc.strftime('%H:%M')} UTC
+        {" · detected from your browser" if reference_tz == browser_timezone else " · manually selected"}
+        &nbsp;&nbsp;&nbsp;
+        <span style="color:#4f9b63;font-weight:700;">● Green</span> 09–17 local &nbsp;&nbsp;
+        <span style="color:#cd549e;font-weight:700;">● Pink</span> 06–09 / 17–24 &nbsp;&nbsp;
+        <span style="color:#e59a45;font-weight:700;">● Orange</span> 00–06
+    </div>
+    """,
+    unsafe_allow_html=True,
 )
 
 world_fig = go.Figure()
@@ -1985,8 +2028,10 @@ st.plotly_chart(
 )
 
 st.caption(
-    "Equal Earth projection. Green = 09:00–17:00 local; orange = 00:00–06:00 local; "
-    "pink = remaining hours. Map bands are scheduling guides, not legal timezone borders."
+    "The selected hour is interpreted in the reference time zone above, then converted through UTC "
+    "to each participant’s local time. Equal Earth projection. Green = 09:00–17:00 local; "
+    "orange = 00:00–06:00 local; pink = remaining hours. "
+    "Map bands are scheduling guides, not legal timezone borders."
 )
 
 
