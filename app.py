@@ -356,6 +356,30 @@ st.markdown(
             margin-bottom:0.70rem !important;
         }
 
+        /* Compact horizontal search-horizon radio buttons. */
+        section[data-testid="stSidebar"] div[role="radiogroup"] {
+            display:flex !important;
+            flex-direction:row !important;
+            align-items:flex-start !important;
+            justify-content:flex-start !important;
+            gap:0.45rem !important;
+            flex-wrap:nowrap !important;
+            margin-top:0.10rem !important;
+            margin-bottom:0.10rem !important;
+        }
+
+        section[data-testid="stSidebar"] div[role="radiogroup"] label {
+            margin:0 !important;
+            padding:0 !important;
+            align-items:flex-start !important;
+        }
+
+        section[data-testid="stSidebar"] div[role="radiogroup"] p {
+            font-size:0.72rem !important;
+            line-height:1.05 !important;
+            white-space:nowrap !important;
+        }
+
         /* Compact saved-setup controls in the sidebar. */
         section[data-testid="stSidebar"] div[class*="st-key-load_preset_button"] button,
         section[data-testid="stSidebar"] div[class*="st-key-download_preset_button"] button,
@@ -1700,7 +1724,7 @@ def reset_defaults():
     st.session_state.meeting_date = DEFAULT_MEETING_DATE
     st.session_state.duration_minutes = DEFAULT_DURATION_MINUTES
     st.session_state.start_interval_minutes = DEFAULT_START_INTERVAL_MINUTES
-    st.session_state.search_horizon_days = 7
+    st.session_state.search_horizon_hours = 120
 
 
 # ---------- Session state ----------
@@ -1717,8 +1741,8 @@ if "duration_minutes" not in st.session_state:
 if "start_interval_minutes" not in st.session_state:
     st.session_state.start_interval_minutes = DEFAULT_START_INTERVAL_MINUTES
 
-if "search_horizon_days" not in st.session_state:
-    st.session_state.search_horizon_days = 7
+if "search_horizon_hours" not in st.session_state:
+    st.session_state.search_horizon_hours = 120
 
 
 # ---------- Meeting settings ----------
@@ -1742,7 +1766,7 @@ with st.sidebar:
             Meeting setup
         </div>
         <div style="font-size:0.82rem;line-height:1.38;color:#5e646d;margin-bottom:0.45rem;">
-            Choose the meeting length, search window, and who is joining. Time-zone changes are handled automatically.
+            Choose the meeting length, search horizon, and who is joining. Time-zone changes are handled automatically.
         </div>
         """,
         unsafe_allow_html=True,
@@ -1814,16 +1838,21 @@ with st.sidebar:
         help="Choose how long the meeting should be.",
     )
 
-    search_horizon_days = st.selectbox(
+    search_horizon_hours = st.radio(
         "Find the best time within",
-        options=[2, 7],
-        key="search_horizon_days",
-        format_func=lambda days: f"Next {days} days",
+        options=[24, 48, 120],
+        key="search_horizon_hours",
+        horizontal=True,
+        format_func=lambda hours: {
+            24: "24 h",
+            48: "48 h",
+            120: "120 h · 5 days",
+        }[hours],
         help="Choose how far ahead the planner should search for the highest-priority meeting times.",
     )
 
     st.caption(
-        f"No date selection needed. The planner searches the next {search_horizon_days} days from now "
+        f"No date selection needed. The planner searches the next {search_horizon_hours} hours from now "
         "and ranks the highest-priority options."
     )
 
@@ -2484,8 +2513,8 @@ anchor_utc = now_utc
 candidate_rows = []
 
 # Search the user-selected horizon automatically and rank the best options.
-SEARCH_HORIZON_DAYS = int(search_horizon_days)
-steps = int((SEARCH_HORIZON_DAYS * 24 * 60) / interval)
+SEARCH_HORIZON_HOURS = int(search_horizon_hours)
+steps = int((SEARCH_HORIZON_HOURS * 60) / interval)
 
 for step in range(steps):
     start_utc = anchor_utc + timedelta(minutes=step * interval)
@@ -2610,7 +2639,13 @@ with st.expander("Email-ready proposal · top 3", expanded=False):
     proposal_lines = [
         "Hi all,",
         "",
-        f"Looking at everyone's calendars, here are three options for the next {search_horizon_days} days:",
+        (
+            "Looking at everyone's calendars, here are three options for the next "
+            + ("24 hours" if search_horizon_hours == 24
+               else "48 hours" if search_horizon_hours == 48
+               else "5 days")
+            + ":"
+        ),
     ]
 
     for proposal_rank, (_, proposal_row) in enumerate(results.head(3).iterrows(), start=1):
