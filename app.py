@@ -6,6 +6,7 @@ import plotly.graph_objects as go
 import uuid
 import json
 import importlib.resources as resources
+import math
 
 from pathlib import Path
 
@@ -238,10 +239,10 @@ st.markdown(
         }
 
         .joining-help {
-            font-size: 8px;
+            font-size: 0.70rem;
             line-height: 1.35;
             color: #74777c;
-            padding: 0.40rem 0.70rem 0.32rem 0.70rem;
+            padding: 0.42rem 0.70rem 0.34rem 0.70rem;
             margin: 0.05rem 0 0.12rem 0;
         }
 
@@ -342,9 +343,9 @@ st.markdown(
         }
 
         div[class*="st-key-remove_"] .stButton > button:hover {
-            background:#cd549e !important;
-            border-color:#cd549e !important;
-            color:#111111 !important;
+            background:#111111 !important;
+            border-color:#111111 !important;
+            color:#ffffff !important;
         }
 
         /* Compact saved-setup controls in the sidebar. */
@@ -1167,6 +1168,132 @@ def zone_display(tz_name: str, ref_date: date) -> str:
 
 def minutes_of_day(t: time) -> int:
     return t.hour * 60 + t.minute
+
+
+
+def solar_position_approx(utc_dt: datetime):
+    """
+    Approximate solar declination and subsolar longitude for a UTC datetime.
+
+    Uses the NOAA fractional-year / equation-of-time approximation.
+    Accuracy is more than sufficient for a visual day/night overlay.
+    Returns:
+        declination_degrees,
+        subsolar_longitude_degrees
+    """
+    if utc_dt.tzinfo is None:
+        utc_dt = utc_dt.replace(tzinfo=ZoneInfo("UTC"))
+    else:
+        utc_dt = utc_dt.astimezone(ZoneInfo("UTC"))
+
+    day_of_year = utc_dt.timetuple().tm_yday
+    fractional_hour = (
+        utc_dt.hour
+        + utc_dt.minute / 60
+        + utc_dt.second / 3600
+    )
+
+    gamma = (
+        2 * math.pi / 365
+        * (day_of_year - 1 + (fractional_hour - 12) / 24)
+    )
+
+    equation_of_time = 229.18 * (
+        0.000075
+        + 0.001868 * math.cos(gamma)
+        - 0.032077 * math.sin(gamma)
+        - 0.014615 * math.cos(2 * gamma)
+        - 0.040849 * math.sin(2 * gamma)
+    )
+
+    declination = (
+        0.006918
+        - 0.399912 * math.cos(gamma)
+        + 0.070257 * math.sin(gamma)
+        - 0.006758 * math.cos(2 * gamma)
+        + 0.000907 * math.sin(2 * gamma)
+        - 0.002697 * math.cos(3 * gamma)
+        + 0.00148 * math.sin(3 * gamma)
+    )
+
+    utc_minutes = fractional_hour * 60
+    subsolar_lon = (720 - utc_minutes - equation_of_time) / 4
+
+    while subsolar_lon > 180:
+        subsolar_lon -= 360
+    while subsolar_lon < -180:
+        subsolar_lon += 360
+
+    return math.degrees(declination), subsolar_lon
+
+
+def add_day_night_overlay(fig, utc_dt: datetime):
+    """
+    Shade the night hemisphere on the world map for the proposed meeting instant.
+
+    The unshaded area is daylight. The overlay is visual guidance rather than
+    an astronomical navigation product.
+    """
+    declination_deg, subsolar_lon = solar_position_approx(utc_dt)
+    declination = math.radians(declination_deg)
+
+    longitudes = [x for x in range(-180, 181, 2)]
+    terminator_lats = []
+
+    sin_decl = math.sin(declination)
+    # Around the equinox, use a tiny signed value so the terminator becomes
+    # the expected near-vertical day/night boundary rather than dividing by 0.
+    if abs(sin_decl) < 1e-6:
+        sin_decl = 1e-6 if declination >= 0 else -1e-6
+
+    cos_decl = math.cos(declination)
+
+    for lon in longitudes:
+        hour_angle = math.radians(lon - subsolar_lon)
+        ratio = -cos_decl * math.cos(hour_angle) / sin_decl
+        lat = math.degrees(math.atan(ratio))
+        terminator_lats.append(lat)
+
+    # Northern-summer declination => night is south of the terminator.
+    # Southern-summer declination => night is north of it.
+    if declination_deg >= 0:
+        night_lons = longitudes + [180, -180]
+        night_lats = terminator_lats + [-90, -90]
+    else:
+        night_lons = longitudes + [180, -180]
+        night_lats = terminator_lats + [90, 90]
+
+    fig.add_trace(
+        go.Scattergeo(
+            lon=night_lons,
+            lat=night_lats,
+            mode="lines",
+            line=dict(width=0),
+            fill="toself",
+            fillcolor="rgba(36, 41, 48, 0.18)",
+            hoverinfo="skip",
+            showlegend=False,
+        )
+    )
+
+    # Small sun marker at the subsolar point.
+    fig.add_trace(
+        go.Scattergeo(
+            lon=[subsolar_lon],
+            lat=[declination_deg],
+            mode="markers",
+            marker=dict(
+                size=8,
+                color="#E8B47A",
+                line=dict(color="#ffffff", width=0.8),
+            ),
+            hovertemplate=(
+                "<b>Approximate subsolar point</b><br>"
+                "Sun is highest here at this instant<extra></extra>"
+            ),
+            showlegend=False,
+        )
+    )
 
 
 # ---------- Visualization helpers ----------
@@ -2030,6 +2157,9 @@ map_reference_utc = reference_local.astimezone(ZoneInfo("UTC"))
 
 world_fig = go.Figure()
 
+# Shade the night hemisphere for the proposed meeting instant.
+add_day_night_overlay(world_fig, map_reference_utc)
+
 for p in people:
     local_dt = map_reference_utc.astimezone(ZoneInfo(p["tz_name"]))
     status_label, status_color = local_status(p, local_dt)
@@ -2112,6 +2242,8 @@ st.markdown(
         <span style="color:#F3D6E7;font-weight:700;">●</span> awake but outside availability
         &nbsp;&nbsp;
         <span style="color:#4A4A4A;font-weight:700;">●</span> 00:00–06:00 local sleep hours
+        &nbsp;&nbsp;
+        <span style="color:#555b63;font-weight:700;">◐</span> shaded map area = night
     </div>
     """,
     unsafe_allow_html=True,
@@ -2399,15 +2531,42 @@ for rank, (_, row) in enumerate(results.head(top_n).iterrows(), start=1):
 # ---------- Email-ready proposal ----------
 
 with st.expander("Email-ready proposal · top 3", expanded=False):
+
+    def proposal_short_label(person):
+        """Short readable label for email proposals."""
+        country_code = person.get("country_code", "")
+        tz_name = person.get("tz_name", "")
+
+        if country_code == "US":
+            if tz_name == "America/Los_Angeles":
+                return "US West"
+            if tz_name in ("America/Denver", "America/Boise"):
+                return "US Mountain"
+            if tz_name == "America/Chicago":
+                return "US Central"
+            if tz_name in ("America/New_York", "America/Detroit", "America/Indiana/Indianapolis"):
+                return "US East"
+            return "US"
+
+        if country_code == "DE":
+            return "Germany"
+
+        if country_code == "TW" or tz_name == "Asia/Taipei":
+            return "Taipei"
+
+        country_name = COUNTRY_NAMES.get(country_code, "").strip()
+        if country_name:
+            return country_name
+
+        fallback = person.get("name", "Participant").strip()
+        if fallback.lower().endswith(" team"):
+            fallback = fallback[:-5]
+        return fallback
+
     proposal_lines = [
-        "Looking at the times, I would propose the following three options:",
+        "Hi all,",
         "",
-        (
-            "Times are listed first in your local time zone: "
-            f"{friendly_zone_name(browser_timezone)} "
-            f"({utc_offset_label(browser_timezone, datetime.now(ZoneInfo(browser_timezone)).date())})."
-        ),
-        "",
+        f"Looking at everyone's calendars, here are three options for the next {search_horizon_days} days:",
     ]
 
     for proposal_rank, (_, proposal_row) in enumerate(results.head(3).iterrows(), start=1):
@@ -2416,37 +2575,36 @@ with st.expander("Email-ready proposal · top 3", expanded=False):
             proposal_utc = proposal_utc.to_pydatetime()
 
         user_local = proposal_utc.astimezone(ZoneInfo(browser_timezone))
-        proposal_lines.append(
-            f"{proposal_rank}. {user_local.strftime('%a %d %b %Y at %H:%M')}"
-        )
+        option_parts = []
 
-        participant_details = []
         for p in people:
             participant_local = proposal_row[p["id"]]
             if hasattr(participant_local, "to_pydatetime"):
                 participant_local = participant_local.to_pydatetime()
 
-            region_text = un_region_label(p.get("country_code", ""))
-            zone_text = friendly_zone_name(p["tz_name"])
-            offset_text = utc_offset_label(p["tz_name"], participant_local.date())
-
-            if p.get("country_code") == "US" and p.get("state"):
-                place_text = f"{p['state']}, {COUNTRY_NAMES.get('US', 'United States')}"
-            else:
-                place_text = COUNTRY_NAMES.get(
-                    p.get("country_code", ""),
-                    p.get("location", ""),
-                )
-
-            participant_details.append(
-                f"{p['name']}: {participant_local.strftime('%a %H:%M')} "
-                f"· {zone_text} {offset_text} · {place_text} / {region_text}"
+            label = proposal_short_label(p)
+            offset_text = utc_offset_label(
+                p["tz_name"],
+                participant_local.date(),
             )
 
-        proposal_lines.append("   (" + "; ".join(participant_details) + ")")
-        proposal_lines.append("")
+            option_parts.append(
+                f"{label} {participant_local.strftime('%a %H:%M')} ({offset_text})"
+            )
 
-    proposal_lines.append("Please let me know which option works best.")
+        proposal_lines.append(
+            f"{proposal_rank}. {user_local.strftime('%a %d %b')} — "
+            + " / ".join(option_parts)
+        )
+
+    proposal_lines.extend(
+        [
+            "",
+            "Please let me know which works best and I'll send the invite.",
+            "",
+            "Best regards,",
+        ]
+    )
 
     email_proposal_text = "\n".join(proposal_lines)
 
