@@ -251,9 +251,9 @@ st.markdown(
             color: var(--dc-pink) !important;
         }
     
-        /* Compact embedded typography: reduce visible text by ~30%. */
+        /* Compact embedded typography: reduce visible text by ~15%. */
         html, body, [class*="css"], [data-testid="stAppViewContainer"] {
-            font-size: 70% !important;
+            font-size: 85% !important;
         }
 
         /* Streamlit widgets often set their own font sizes, so scale those too. */
@@ -266,14 +266,14 @@ st.markdown(
         [data-testid="stSidebar"] *,
         [role="button"],
         [role="option"] {
-            font-size: 0.70em !important;
+            font-size: 0.85em !important;
         }
 
-        /* Preserve headings as headings while still making them ~30% smaller. */
-        h1 { font-size: 1.75rem !important; }
-        h2 { font-size: 1.40rem !important; }
-        h3 { font-size: 1.15rem !important; }
-        h4 { font-size: 1.00rem !important; }
+        /* Keep headings proportionate while making them modestly smaller. */
+        h1 { font-size: 2.10rem !important; }
+        h2 { font-size: 1.70rem !important; }
+        h3 { font-size: 1.35rem !important; }
+        h4 { font-size: 1.15rem !important; }
 
 </style>
 
