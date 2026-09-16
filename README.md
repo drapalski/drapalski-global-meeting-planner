@@ -24,7 +24,8 @@ This tool turns those calculations into a simple visual planning workflow.
 
 ## Live application
 
-**Live app:** deployment link will be added after the Streamlit Community Cloud launch.
+**Open the Global Meeting Planner:**  
+https://drapalski-meeting-planner.streamlit.app/
 
 ## About Drapalski Consulting
 
