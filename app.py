@@ -277,11 +277,13 @@ st.markdown(
             background:#ff66c4 !important;
             border-color:#ff66c4 !important;
             color:#111111 !important;
-            font-size:0.70rem !important;
-            font-weight:600 !important;
-            min-height:1.85rem !important;
-            padding:0.20rem 0.55rem !important;
-            border-radius:6px !important;
+            font-size:8px !important;
+            font-weight:700 !important;
+            min-height:1.55rem !important;
+            height:1.55rem !important;
+            padding:0.05rem 0.28rem !important;
+            border-radius:5px !important;
+            line-height:1 !important;
         }
 
         div[class*="st-key-remove_"] .stButton > button:hover {
@@ -1720,7 +1722,12 @@ for index, person in enumerate(list(people)):
             )
 
         with top_remove:
-            if st.button("Remove", key=f"remove_{pid}", use_container_width=True):
+            if st.button(
+                "×",
+                key=f"remove_{pid}",
+                use_container_width=True,
+                help="Remove party",
+            ):
                 st.session_state.people_v2 = [p for p in people if p["id"] != pid]
                 st.rerun()
 
