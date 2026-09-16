@@ -310,8 +310,9 @@ st.markdown(
         .participant-meta {
             color:#74777c;
             font-size:0.70rem;
-            line-height:1.35;
+            line-height:1.42;
             padding-top:0.05rem;
+            padding-bottom:0.14rem;
         }
 
         .participant-meta strong {
@@ -372,8 +373,18 @@ st.markdown(
 
         section[data-testid="stSidebar"] div[class*="st-key-load_preset_button"],
         section[data-testid="stSidebar"] div[class*="st-key-download_preset_button"] {
-            margin-top:0.08rem !important;
+            margin-top:0 !important;
             margin-bottom:0.08rem !important;
+            padding-top:0 !important;
+            align-self:flex-start !important;
+        }
+
+        section[data-testid="stSidebar"] div[class*="st-key-load_preset_button"] > div,
+        section[data-testid="stSidebar"] div[class*="st-key-download_preset_button"] > div {
+            display:flex !important;
+            align-items:flex-start !important;
+            margin-top:0 !important;
+            padding-top:0 !important;
         }
 
         a {
@@ -1954,6 +1965,9 @@ for index, person in enumerate(list(people)):
                 st.session_state.people_v2 = [p for p in people if p["id"] != pid]
                 st.rerun()
 
+        # Keep metadata visually separate from the editable controls.
+        st.markdown("<div style='height:0.38rem;'></div>", unsafe_allow_html=True)
+
         c1, c2, c3, c4, c5 = st.columns([1.00, 1.15, 1.80, 0.72, 0.72])
 
         with c1:
@@ -2605,6 +2619,7 @@ with st.expander("Email-ready proposal · top 3", expanded=False):
             proposal_utc = proposal_utc.to_pydatetime()
 
         user_local = proposal_utc.astimezone(ZoneInfo(browser_timezone))
+        reference_date = user_local.date()
         option_parts = []
 
         for p in people:
@@ -2618,8 +2633,21 @@ with st.expander("Email-ready proposal · top 3", expanded=False):
                 participant_local.date(),
             )
 
+            day_delta = (participant_local.date() - reference_date).days
+            if day_delta == -1:
+                day_note = ", previous day"
+            elif day_delta == 1:
+                day_note = ", next day"
+            elif day_delta < -1:
+                day_note = f", {abs(day_delta)} days earlier"
+            elif day_delta > 1:
+                day_note = f", {day_delta} days later"
+            else:
+                day_note = ""
+
             option_parts.append(
-                f"{label} {participant_local.strftime('%a %H:%M')} ({offset_text})"
+                f"{label} {participant_local.strftime('%a %d %b %H:%M')} "
+                f"({offset_text}{day_note})"
             )
 
         proposal_lines.append(
