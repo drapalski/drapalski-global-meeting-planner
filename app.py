@@ -250,6 +250,13 @@ st.markdown(
             margin: 0.05rem 0 0.12rem 0;
         }
 
+        @media (max-width: 700px) {
+            .best-times-methodology-grid {
+                grid-template-columns: 1fr !important;
+                gap:0.35rem !important;
+            }
+        }
+
         section[data-testid="stSidebar"] hr {
             border-color: #eadde6;
         }
@@ -2493,11 +2500,6 @@ st.plotly_chart(
     config={"displayModeBar": False, "responsive": True},
 )
 
-st.caption(
-    "Local clock times are shown above each participant row in two-hour increments. "
-    "The outlined panel is the proposed meeting window and its width reflects the selected meeting length. "
-    "A dotted separator marks that participant’s local midnight and labels the next local day."
-)
 
 
 
@@ -2570,8 +2572,49 @@ results = pd.DataFrame(candidate_rows).sort_values(
 
 # ---------- Best times ----------
 
-st.subheader("Best meeting times")
-st.caption(scoring_methodology_summary())
+st.markdown(
+    """
+    <div style="
+        background:#fdebf7;
+        border:1px solid #f4cde5;
+        border-left:4px solid #ff66c4;
+        border-radius:8px;
+        padding:0.72rem 0.90rem;
+        margin-top:0.35rem;
+        margin-bottom:0.60rem;
+    ">
+        <div class="best-times-methodology-grid" style="
+            display:grid;
+            grid-template-columns:minmax(190px, 0.85fr) minmax(0, 2.4fr);
+            gap:1.10rem;
+            align-items:start;
+        ">
+            <div style="
+                font-size:1.35rem;
+                font-weight:700;
+                line-height:1.15;
+                color:#202226;
+                padding-top:0.05rem;
+            ">
+                Best meeting times
+            </div>
+            <div style="
+                font-size:0.72rem;
+                line-height:1.45;
+                color:#62656b;
+            ">
+                <strong style="color:#202226;">Composite scoring model:</strong>
+                30% selected availability, 20% business-hours fit, 20% human convenience,
+                15% local workweek/norms, and 15% public-holiday calendar.
+                Hard caps apply to meetings outside availability, during sleep, in configured
+                non-working periods, or on public holidays. Overall meeting ranking =
+                65% participant average + 35% lowest participant score.
+            </div>
+        </div>
+    </div>
+    """,
+    unsafe_allow_html=True,
+)
 
 top_n = st.slider("How many options to show", 3, 10, 4)
 
