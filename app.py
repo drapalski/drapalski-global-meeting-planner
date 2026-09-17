@@ -299,7 +299,7 @@ st.markdown(
                 line-height:1.20 !important;
                 font-weight:650 !important;
                 color:#6f7177 !important;
-                margin:0.24rem 0 0.05rem 0.18rem !important;
+                margin:0.10rem 0 0.05rem 0.10rem !important;
                 padding:0 0 0.08rem 0 !important;
                 min-height:0.90rem !important;
                 clear:both !important;
