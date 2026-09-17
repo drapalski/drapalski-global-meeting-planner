@@ -299,7 +299,7 @@ st.markdown(
                 line-height:1.20 !important;
                 font-weight:650 !important;
                 color:#6f7177 !important;
-                margin:0.38rem 0 0.12rem 0.18rem !important;
+                margin:0.24rem 0 0.05rem 0.18rem !important;
                 padding:0 0 0.08rem 0 !important;
                 min-height:0.90rem !important;
                 clear:both !important;
@@ -309,7 +309,7 @@ st.markdown(
                bottom space so select/time inputs cannot visually overlap labels. */
             div[data-testid="stMarkdownContainer"]:has(.mobile-field-label),
             div[data-testid="stMarkdown"]:has(.mobile-field-label) {
-                margin-bottom:0.42rem !important;
+                margin-bottom:0.20rem !important;
                 padding-bottom:0.08rem !important;
                 overflow:visible !important;
             }
@@ -1651,7 +1651,7 @@ def _time_in_window(local_t: time, start_t: time, end_t: time) -> bool:
         return True
     if start < end:
         return start <= current < end
-    # Supports an overnight availability window, e.g. 22:00â€“06:00.
+    # Supports an overnight availability window, e.g. 22:00â€?6:00.
     return current >= start or current < end
 
 
@@ -1660,7 +1660,7 @@ def local_status(person: dict, local_dt: datetime):
     Map-status convention.
 
     Green means the participant is inside the availability window they selected.
-    Outside that window, 00:00â€“06:00 is shown as sleep time and all other hours
+    Outside that window, 00:00â€?6:00 is shown as sleep time and all other hours
     are shown as outside availability.
     """
     if _time_in_window(local_dt.time(), person["earliest"], person["latest"]):
@@ -1678,7 +1678,7 @@ def local_clock_segments_utc(person: dict, ref_date: date):
     Build a 24-hour UTC status band for one participant.
 
     The participant's selected availability overrides the generic day context.
-    Outside that window, 00:00â€“06:00 local is sleep and remaining hours are
+    Outside that window, 00:00â€?6:00 local is sleep and remaining hours are
     outside availability.
     """
     tz = ZoneInfo(person["tz_name"])
@@ -1780,7 +1780,7 @@ def add_timezone_band(fig, center_lon: float, color: str):
 
 
 def preferred_window_utc_segments(person: dict, ref_date: date):
-    """Return preferred local hours as one or two segments on a 0â€“24 UTC axis."""
+    """Return preferred local hours as one or two segments on a 0â€?4 UTC axis."""
     tz = ZoneInfo(person["tz_name"])
     local_start = datetime.combine(ref_date, person["earliest"], tzinfo=tz)
     local_end = datetime.combine(ref_date, person["latest"], tzinfo=tz)
@@ -2167,7 +2167,7 @@ st.markdown(
             <div class="participant-intro-title">Whoâ€™s joining?</div>
             <div class="participant-intro-copy">
                 Add the people or teams joining the meeting and choose their country or area.
-                For U.S. participants, choose the state too. Working hours default to 08:00â€“17:00
+                For U.S. participants, choose the state too. Working hours default to 08:00â€?7:00
                 local time. Use the override fields only when a participant is available outside
                 those hours; the selected window directly drives the ranking and green availability.
             </div>
@@ -2340,7 +2340,7 @@ for index, person in enumerate(list(people)):
 add_col, reset_col, spacer = st.columns([1.3, 1.3, 5])
 
 with add_col:
-    if st.button("ï¼‹ Add person", type="primary", use_container_width=True):
+    if st.button("ï¼?Add person", type="primary", use_container_width=True):
         st.session_state.people_v2.append(
             {
                 "id": new_id(),
@@ -2558,13 +2558,13 @@ st.markdown(
         ({reference_offset})
         Â· {map_reference_utc.strftime('%H:%M')} UTC
         <br>
-        <span style="color:#A8C9AE;font-weight:700;">â—</span> inside selected availability
+        <span style="color:#A8C9AE;font-weight:700;">â—?/span> inside selected availability
         &nbsp;&nbsp;
-        <span style="color:#F3D6E7;font-weight:700;">â—</span> awake but outside availability
+        <span style="color:#F3D6E7;font-weight:700;">â—?/span> awake but outside availability
         &nbsp;&nbsp;
-        <span style="color:#4A4A4A;font-weight:700;">â—</span> 00:00â€“06:00 local sleep hours
+        <span style="color:#4A4A4A;font-weight:700;">â—?/span> 00:00â€?6:00 local sleep hours
         &nbsp;&nbsp;
-        <span style="color:#555b63;font-weight:700;">â—</span> shaded map area = night
+        <span style="color:#555b63;font-weight:700;">â—?/span> shaded map area = night
     </div>
     """,
     unsafe_allow_html=True,
@@ -3016,7 +3016,7 @@ with st.expander("Email-ready proposal Â· top 3", expanded=False):
             )
 
         proposal_lines.append(
-            f"{proposal_rank}. {user_local.strftime('%a %d %b')} â€” "
+            f"{proposal_rank}. {user_local.strftime('%a %d %b')} â€?"
             + " / ".join(option_parts)
         )
 
